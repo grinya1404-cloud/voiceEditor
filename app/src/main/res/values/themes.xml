@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.VoiceSamplePrep" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">#FFB300</item>
+        <item name="colorPrimaryVariant">#C88A00</item>
+        <item name="colorOnPrimary">#0E0E10</item>
+        <item name="android:colorBackground">#0E0E10</item>
+        <item name="colorSurface">#1A1A1E</item>
+        <item name="colorOnSurface">#E8E8EA</item>
+        <item name="android:statusBarColor">#0E0E10</item>
+    </style>
+</resources>

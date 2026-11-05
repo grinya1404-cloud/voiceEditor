@@ -1,0 +1,241 @@
+package com.grinya.voicesampleprep.model;
+
+import com.grinya.voicesampleprep.edit.UndoStack;
+import com.grinya.voicesampleprep.util.AudioOps;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+public class AudioClip {
+
+  public static final int CHANNELS = 2;
+  public static final int SAMPLE_RATE = 48000;
+  public java.io.File dir;
+
+  public String name;
+  public float[] pcm; // interleaved stereo L,R,L,R...
+  public int sampleRate;
+  public int channels;
+  public List<Integer> markers = new ArrayList<>(); // индексы фреймов
+
+  private final UndoStack history = new UndoStack();
+
+  public AudioClip(String name, float[] pcm, int sampleRate) {
+    this.name = name;
+    this.pcm = pcm;
+    this.sampleRate = sampleRate;
+    this.channels = CHANNELS;
+  }
+
+  public int frameCount() {
+    return pcm.length / CHANNELS;
+  }
+
+  public double durationSec() {
+    return frameCount() / (double) sampleRate;
+  }
+
+  // ---------- операции ----------
+
+  public void trim(int startFrame, int endFrame) {
+    pushHistory();
+    pcm = AudioOps.trim(pcm, startFrame, endFrame);
+    fixMarkersAfterTrim(startFrame, endFrame);
+  }
+
+  public void delete(int startFrame, int endFrame) {
+    pushHistory();
+    pcm = AudioOps.deleteRange(pcm, startFrame, endFrame);
+    fixMarkersAfterDelete(startFrame, endFrame);
+  }
+
+  public void silence(int startFrame, int endFrame) {
+    pushHistory();
+    pcm = AudioOps.silenceRange(pcm, startFrame, endFrame);
+  }
+
+  public void gain(float dB) {
+    pushHistory();
+    pcm = AudioOps.gain(pcm, dB);
+  }
+
+  public void gainRange(int startFrame, int endFrame, float dB) {
+    pushHistory();
+    pcm = AudioOps.gainRange(pcm, startFrame, endFrame, dB);
+  }
+
+  public void normalizePeak(float target) {
+    pushHistory();
+    pcm = AudioOps.normalizePeak(pcm, target);
+  }
+
+  public void fadeIn(int fadeFrames) {
+    pushHistory();
+    pcm = AudioOps.fadeIn(pcm, fadeFrames);
+  }
+
+  public void fadeOut(int fadeFrames) {
+    pushHistory();
+    pcm = AudioOps.fadeOut(pcm, fadeFrames);
+  }
+
+  public void reverse() {
+    pushHistory();
+    pcm = AudioOps.reverse(pcm);
+    // маркеры зеркалим
+    int total = frameCount();
+    List<Integer> newMarkers = new ArrayList<>();
+    for (int m : markers)
+      newMarkers.add(total - 1 - m);
+    Collections.sort(newMarkers);
+    markers = newMarkers;
+  }
+
+  public void setPcm(float[] newPcm) {
+    pushHistory();
+    pcm = newPcm;
+  }
+
+  // ---------- undo/redo ----------
+
+  private void pushHistory() {
+    history.push(pcm.clone(), markers);
+  }
+
+  public boolean canUndo() {
+    return history.canUndo();
+  }
+
+  public boolean canRedo() {
+    return history.canRedo();
+  }
+
+  public void undo() {
+    UndoStack.Snapshot s = history.undo(pcm, markers);
+    if (s != null) {
+      pcm = s.pcm;
+      markers = s.markers;
+    }
+  }
+
+  public void redo() {
+    UndoStack.Snapshot s = history.redo(pcm, markers);
+    if (s != null) {
+      pcm = s.pcm;
+      markers = s.markers;
+    }
+  }
+
+  // ---------- маркеры ----------
+
+  public void addMarker(int frame) {
+    frame = Math.max(0, Math.min(frameCount() - 1, frame));
+    if (!markers.contains(frame)) {
+      markers.add(frame);
+      Collections.sort(markers);
+    }
+  }
+
+  public void removeMarker(int frame) {
+    markers.remove(Integer.valueOf(frame));
+  }
+
+  public void clearMarkers() {
+    markers.clear();
+  }
+
+  // ---------- коррекция маркеров ----------
+
+  private void fixMarkersAfterTrim(int startFrame, int endFrame) {
+    int span = endFrame - startFrame;
+    List<Integer> out = new ArrayList<>();
+    for (int m : markers) {
+      if (m >= startFrame && m < endFrame)
+        out.add(m - startFrame);
+    }
+    // всё, что левее — к 0, правее — к концу
+    Collections.sort(out);
+    markers = out;
+    // защита от выхода за пределы (не должно случиться, но на всякий случай)
+    int max = Math.max(0, span - 1);
+    for (int i = 0; i < markers.size(); i++) {
+      if (markers.get(i) > max)
+        markers.set(i, max);
+    }
+  }
+
+  private void fixMarkersAfterDelete(int startFrame, int endFrame) {
+    int removed = endFrame - startFrame;
+    List<Integer> out = new ArrayList<>();
+    for (int m : markers) {
+      if (m < startFrame)
+        out.add(m);
+      else if (m >= endFrame)
+        out.add(m - removed);
+      // маркеры внутри удалённого диапазона отбрасываем
+    }
+    Collections.sort(out);
+    markers = out;
+  }
+
+  /** Применить fade in к диапазону [startFrame, endFrame). */
+  public void fadeInRange(int startFrame, int endFrame, int fadeFrames) {
+    pushHistory();
+    int total = frameCount();
+    int s = Math.max(0, Math.min(startFrame, total));
+    int e = Math.max(s, Math.min(endFrame, total));
+    int n = Math.min(fadeFrames, e - s);
+    if (n <= 0)
+      return;
+    for (int i = 0; i < n; i++) {
+      float g = (float) i / n;
+      int idx = (s + i) * CHANNELS;
+      pcm[idx] *= g;
+      pcm[idx + 1] *= g;
+    }
+  }
+
+  /** Применить fade out к диапазону [startFrame, endFrame). */
+  public void fadeOutRange(int startFrame, int endFrame, int fadeFrames) {
+    pushHistory();
+    int total = frameCount();
+    int s = Math.max(0, Math.min(startFrame, total));
+    int e = Math.max(s, Math.min(endFrame, total));
+    int n = Math.min(fadeFrames, e - s);
+    if (n <= 0)
+      return;
+    for (int i = 0; i < n; i++) {
+      float g = 1f - (float) i / n;
+      int idx = (e - n + i) * CHANNELS;
+      pcm[idx] *= g;
+      pcm[idx + 1] *= g;
+    }
+  }
+
+  /** Пиковая нормализация диапазона к target. Остальное не трогаем. */
+  public void normalizeRangePeak(int startFrame, int endFrame, float target) {
+    pushHistory();
+    int total = frameCount();
+    int s = Math.max(0, Math.min(startFrame, total));
+    int e = Math.max(s, Math.min(endFrame, total));
+    float peak = 0f;
+    for (int i = s * CHANNELS; i < e * CHANNELS; i++) {
+      float a = Math.abs(pcm[i]);
+      if (a > peak)
+        peak = a;
+    }
+    if (peak <= 1e-9f)
+      return;
+    float mul = target / peak;
+    for (int i = s * CHANNELS; i < e * CHANNELS; i++)
+      pcm[i] *= mul;
+  }
+
+  /** Сохранить текущий PCM в исходный файл (dir), как WAV 16-bit stereo @ sampleRate. */
+  public void save() throws java.io.IOException {
+    if (dir == null)
+      throw new java.io.IOException("No file");
+    com.grinya.voicesampleprep.audio.WavWriter.write(dir, pcm, sampleRate, sampleRate, 16, false);
+  }
+}

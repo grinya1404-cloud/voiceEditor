@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hello_world">Hello World!</string>
+    <string name="app_name">VoiceSamplePrep</string>
+
+    <!-- Edit screen -->
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="stop">Stop</string>
+    <string name="trim">Trim</string>
+    <string name="cut">Cut</string>
+    <string name="silence">Silence</string>
+    <string name="gain">Gain</string>
+    <string name="normalize">Normalize</string>
+    <string name="fade_in">Fade In</string>
+    <string name="fade_out">Fade Out</string>
+    <string name="reverse">Reverse</string>
+    <string name="marker">Marker</string>
+    <string name="undo">Undo</string>
+    <string name="redo">Redo</string>
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
+    <string name="export">Export</string>
+
+    <!-- dialogs -->
+    <string name="gain_dialog_title">Gain (dB)</string>
+    <string name="normalize_dialog_title">Normalize peak (0..1)</string>
+    <string name="fade_dialog_title">Fade length (ms)</string>
+    <string name="no_selection">Сначала выделите фрагмент</string>
+</resources>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#0E0E10</color>
+    <color name="surface">#1A1A1E</color>
+    <color name="onSurface">#E8E8EA</color>
+    <color name="accent">#FFB300</color>
+    <color name="accentDark">#C88A00</color>
+    <color name="wave">#9AA0A6</color>
+    <color name="playhead">#FF3B30</color>
+    <color name="marker">#4FC3F7</color>
+    <color name="ic_launcher_background">#0E0E10</color>
+    <color name="ic_launcher_foreground">#FFB300</color>
+</resources>
