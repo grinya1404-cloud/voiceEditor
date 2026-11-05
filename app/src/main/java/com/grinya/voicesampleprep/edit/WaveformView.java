@@ -32,6 +32,8 @@ public class WaveformView extends View {
 
     /** Тап по существующему маркеру. */
     void onMarkerTapped(int frame);
+
+    void onMarkerLongPressed(int frame);
   }
 
   // ---------- цвета ----------
@@ -109,9 +111,20 @@ public class WaveformView extends View {
 
   private static final int DRAG_LONG_PRESS_PENDING = 5;
   private boolean longPressActivated = false;
+  private int downMarkerFrame = -1;
   private final Runnable longPressRunnable = new Runnable() {
     @Override
     public void run() {
+      if (downMarkerFrame != -1) {
+        // Долгий тап по маркеру
+        if (listener != null)
+          listener.onMarkerLongPressed(downMarkerFrame);
+        longPressActivated = true;
+        downMarkerFrame = -1;
+        performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+        return;
+      }
+      // Стандартный долгий тап (создание выделения)
       if (dragMode == DRAG_SCROLL || dragMode == DRAG_LONG_PRESS_PENDING) {
         longPressActivated = true;
         dragMode = DRAG_NEW_SELECTION;
@@ -361,6 +374,8 @@ public class WaveformView extends View {
         downY = e.getY();
         downSelStart = selStart;
         downSelEnd = selEnd;
+
+        // 1. Проверка на попадание в ручки выделения
         if (hasSelection() && e.getY() >= rulerHeightPx) {
           float sxStart = frameToX(selStart);
           float sxEnd = frameToX(selEnd);
@@ -373,6 +388,20 @@ public class WaveformView extends View {
             return true;
           }
         }
+
+        // 2. Проверка на попадание в маркер (увеличенная зона: 20px влево и вправо)
+        downMarkerFrame = -1;
+        if (markers != null) {
+          for (int m : markers) {
+            float mx = frameToX(m);
+            if (e.getX() >= mx - 20 && e.getX() <= mx + markerFlagW + 20) {
+              downMarkerFrame = m;
+              break;
+            }
+          }
+        }
+
+        // 3. Инициализация скролла и таймера долгого нажатия
         dragMode = DRAG_SCROLL;
         longPressActivated = false;
         postDelayed(longPressRunnable, 350);
@@ -381,10 +410,13 @@ public class WaveformView extends View {
       case MotionEvent.ACTION_MOVE:
         if (scaleDetector.isInProgress())
           return true;
-        if (!longPressActivated && Math.abs(e.getX() - downX) + Math.abs(e.getY() - downY) > 12
-            && dragMode == DRAG_SCROLL) {
+
+        // Если сдвинули палец больше чем на 12px — отменяем долгий тап
+        if (!longPressActivated && Math.abs(e.getX() - downX) + Math.abs(e.getY() - downY) > 12) {
           removeCallbacks(longPressRunnable);
+          downMarkerFrame = -1; // Сбрасываем, так как это уже скролл, а не тап по маркеру
         }
+
         if (dragMode == DRAG_SCROLL) {
           double dx = lastTouchX - e.getX();
           viewStartFrame += dx * viewFramesPerPixel;
@@ -431,34 +463,29 @@ public class WaveformView extends View {
       case MotionEvent.ACTION_UP:
       case MotionEvent.ACTION_CANCEL:
         removeCallbacks(longPressRunnable);
-        longPressActivated = false;
+
+        // Если это был короткий тап (не долгий и не скролл)
         if (e.getActionMasked() == MotionEvent.ACTION_UP && Math.abs(e.getX() - downX) < 8
-            && Math.abs(e.getY() - downY) < 8 && e.getY() >= rulerHeightPx) {
-          // это тап
-          boolean hitMarker = false;
-          if (markers != null) {
-            for (int m : markers) {
-              float mx = frameToX(m);
-              if (e.getX() >= mx - 4 && e.getX() <= mx + markerFlagW + 4) {
-                if (listener != null)
-                  listener.onMarkerTapped(m);
-                hitMarker = true;
-                break;
-              }
-            }
+            && Math.abs(e.getY() - downY) < 8 && e.getY() >= rulerHeightPx && !longPressActivated) {
+
+          if (downMarkerFrame != -1) {
+            // Короткий тап по маркеру — переход
+            if (listener != null)
+              listener.onMarkerTapped(downMarkerFrame);
+          } else {
+            // Короткий тап по волне — перемещение playhead
+            if (listener != null)
+              listener.onTap(xToFrame(e.getX()));
           }
-          if (!hitMarker && listener != null) {
-            listener.onTap(xToFrame(e.getX()));
-          }
-          dragMode = DRAG_NONE;
-          return true;
         }
+
         dragMode = DRAG_NONE;
+        downMarkerFrame = -1;
+        longPressActivated = false;
         return true;
     }
     return super.onTouchEvent(e);
   }
-
   // ---------- преобразования ----------
 
   private int xToFrame(float x) {

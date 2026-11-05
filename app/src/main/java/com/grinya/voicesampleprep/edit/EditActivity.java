@@ -329,9 +329,21 @@ public class EditActivity extends AppCompatActivity
 
   @Override
   public void onMarkerTapped(int frame) {
+    // Обычный тап — просто переход
     player.seekToFrame(frame);
     wave.setPlayheadFrame(frame);
     updateTimeLabel();
+  }
+
+  @Override
+  public void onMarkerLongPressed(int frame) {
+    // Долгий тап — меню удаления
+    String time = formatMs(frame * 1000 / clip.sampleRate);
+    new AlertDialog.Builder(this).setTitle("Маркер @" + time)
+        .setPositiveButton("Удалить", (d, which) -> {
+          clip.removeMarker(frame);
+          wave.updateMarkers(clip.markers);
+        }).setNegativeButton("Отмена", null).show();
   }
 
   private void showMarkerList() {
