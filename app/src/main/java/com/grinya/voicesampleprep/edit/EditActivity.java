@@ -350,12 +350,8 @@ public class EditActivity extends AppCompatActivity
     btnPause.setEnabled(false);
     isPaused = false;
 
-    // Возвращаем плеер в режим "играть до конца"
-    player.setPlayRange(0, clip.frameCount());
-
-    // Ставим линии на место (если хочешь, чтобы после выделения возвращалось к красной линии)
-    int ph = wave.getPlayheadFrame();
-    wave.setActivePlayheadFrame(ph);
+    // Зелёная линия остаётся на конце трека, а не прыгает к красной
+    wave.setActivePlayheadFrame(clip.frameCount());
     updateTimeLabel();
   }
 

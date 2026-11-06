@@ -48,10 +48,22 @@ public class AudioPlayer {
       @Override
       public void run() {
         if (listener != null && playing) {
-          int elapsedMs = (int) (System.currentTimeMillis() - playStartTimeMs);
-          int frame = playStartFrame + elapsedMs * RATE / 1000;
-          if (frame > endFrame)
-            frame = endFrame;
+          int frame;
+          if (track != null) {
+            // getPlaybackHeadPosition возвращает позицию от начала буфера AudioTrack,
+            // а не от startFrame — поэтому переводим в координаты трека.
+            int head = track.getPlaybackHeadPosition();
+            frame = startFrame + head;
+            if (frame < startFrame)
+              frame = startFrame;
+            if (endFrame > 0 && frame > endFrame)
+              frame = endFrame;
+          } else {
+            int elapsedMs = (int) (System.currentTimeMillis() - playStartTimeMs);
+            frame = playStartFrame + elapsedMs * RATE / 1000;
+            if (frame > endFrame)
+              frame = endFrame;
+          }
           currentFrame = frame;
           listener.onPosition(currentFrame * 1000 / RATE);
           ui.postDelayed(this, 16);
@@ -120,6 +132,19 @@ public class AudioPlayer {
       currentFrame = startFrame;
     }
 
+    android.util.Log.d("PLAYER", "play() startFrame=" + startFrame + " endFrame=" + endFrame
+        + " totalFrames=" + totalFrames + " pcmLen=" + (pcm == null ? 0 : pcm.length));
+
+    // Старый поток должен быть уже завершён (pause()/stop() ждут). Не блокируем UI надолго.
+    if (playerThread != null && playerThread.isAlive()) {
+      try {
+        playerThread.join(500);
+      } catch (InterruptedException ignored) {
+        Thread.currentThread().interrupt();
+      }
+    }
+    playerThread = null;
+
     playing = true;
     playStartFrame = currentFrame;
     playStartTimeMs = System.currentTimeMillis();
@@ -153,6 +178,7 @@ public class AudioPlayer {
 
           int written = 0;
           int totalToWrite = block.length;
+          boolean writeFailed = false;
           while (written < totalToWrite) {
             if (!playing)
               break;
@@ -160,20 +186,14 @@ public class AudioPlayer {
             if (w <= 0) {
               android.util.Log.w("PLAYER",
                   "write returned " + w + " playing=" + playing + " frame=" + frame);
-              // Ошибка или прерывание — не двигаемся дальше, но и не зацикливаемся
-              if (!playing)
-                break;
-              // Небольшая пауза и повтор (например, при временном underrun)
-              try {
-                Thread.sleep(5);
-              } catch (InterruptedException ignored) {
-              }
-              continue;
+              // underrun или ошибка — прерываем воспроизведение, а не зацикливаемся
+              writeFailed = true;
+              break;
             }
             written += w;
           }
-          if (written < totalToWrite && !playing)
-            break; // пауза
+          if (writeFailed || !playing)
+            break;
           frame += n;
           currentFrame = frame;
         }
@@ -181,27 +201,27 @@ public class AudioPlayer {
       } catch (Exception ignored) {
       } finally {
         playing = false;
-        try {
-          // Дадим доиграть остаток буфера (примерно 100-200 мс)
-          if (t.getState() == AudioTrack.STATE_INITIALIZED
-              && t.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
-            Thread.sleep(100);
+        // currentFrame уже обновлялся в цикле записи (frame += n; currentFrame = frame),
+        // поэтому он точно отражает, сколько фреймов ушло в трек. Не спрашиваем позицию у
+        // уже остановленного/освобождённого AudioTrack — он может вернуть 0.
+        int finalFrame = currentFrame;
+        if (endFrame > 0 && finalFrame > endFrame)
+          finalFrame = endFrame;
+
+        if (t != null) {
+          try {
+            t.stop();
+          } catch (Exception ignored) {
           }
-        } catch (InterruptedException ignored) {
-        }
-        try {
-          t.stop();
-        } catch (Exception ignored) {
-        }
-        try {
-          t.release();
-        } catch (Exception ignored) {
+          try {
+            t.release();
+          } catch (Exception ignored) {
+          }
         }
         if (track == t)
           track = null;
 
-        int elapsedMs = (int) (System.currentTimeMillis() - playStartTimeMs);
-        currentFrame = Math.min(playStartFrame + elapsedMs * RATE / 1000, endFrame);
+        currentFrame = finalFrame;
         final boolean reachedEnd = (currentFrame >= endFrame && endFrame > 0);
         ui.post(() -> {
           if (listener != null) {
@@ -221,13 +241,20 @@ public class AudioPlayer {
       listener.onStateChanged(true);
   }
 
-  /** Пауза. Позиция сохраняется. */
+  /** Пауза. Позиция сохраняется. Ждёт завершения потока плеера, чтобы не было гонки при повторном Play. */
   public void pause() {
     if (!playing)
       return;
     playing = false;
     ui.removeCallbacks(positionTick);
-    // поток сам завершится, т.к. крутится на volatile playing
+    if (playerThread != null) {
+      try {
+        playerThread.join(1000);
+      } catch (InterruptedException ignored) {
+        Thread.currentThread().interrupt();
+      }
+      playerThread = null;
+    }
     if (listener != null)
       listener.onStateChanged(false);
   }
