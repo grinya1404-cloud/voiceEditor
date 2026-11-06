@@ -133,7 +133,7 @@ public class EditActivity extends AppCompatActivity
         startFrame = wave.getSelStart();
         endFrame = wave.getSelEnd();
       } else {
-        // Играем от красной линии до конца (или от начала, если стоим в конце)
+        // Играем от курсора до конца
         startFrame = isPaused ? wave.getActivePlayFrame() : wave.getPlayheadFrame();
         endFrame = clip.frameCount();
       }
@@ -142,8 +142,6 @@ public class EditActivity extends AppCompatActivity
       player.seekToFrame(startFrame);
       player.play();
       isPaused = false;
-      btnPlay.setEnabled(false);
-      btnPause.setEnabled(true);
     });
 
     btnPause.setOnClickListener(v -> {
@@ -350,12 +348,10 @@ public class EditActivity extends AppCompatActivity
     btnPause.setEnabled(false);
     isPaused = false;
 
-    // Возвращаем плеер в режим "играть до конца"
+    // Возвращаем плеер в режим "весь файл"
     player.setPlayRange(0, clip.frameCount());
 
-    // Ставим линии на место (если хочешь, чтобы после выделения возвращалось к красной линии)
-    int ph = wave.getPlayheadFrame();
-    wave.setActivePlayheadFrame(ph);
+    wave.setActivePlayheadFrame(clip.frameCount());
     updateTimeLabel();
   }
 
