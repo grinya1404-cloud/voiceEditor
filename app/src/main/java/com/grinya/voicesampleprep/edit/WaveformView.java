@@ -50,6 +50,9 @@ public class WaveformView extends View {
   private int colorRulerText = 0xFF808080;
   private int playheadFrame = 0;
   private int activePlayFrame = 0; // Новая переменная для зелёной линии
+  // private int targetActiveFrame = 0;
+  // private android.view.Choreographer.FrameCallback frameCallback;
+  // private boolean isAnimating = false;
 
   // ---------- геометрия ----------
   private static final int RULER_HEIGHT_DP = 22;
@@ -808,8 +811,11 @@ public class WaveformView extends View {
   }
 
   public void setActivePlayheadFrame(int f) {
-    if (f == activePlayFrame)
-      return;
+    activePlayFrame = Math.max(0, Math.min(totalFrames, f));
+    invalidate();
+  }
+
+  public void snapActivePlayheadFrame(int f) {
     activePlayFrame = Math.max(0, Math.min(totalFrames, f));
     invalidate();
   }
@@ -821,4 +827,5 @@ public class WaveformView extends View {
   public int getActivePlayFrame() {
     return activePlayFrame;
   }
+
 }

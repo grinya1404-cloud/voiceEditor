@@ -94,7 +94,16 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_media_play"
             android:tint="@color/accent"
-            android:contentDescription="@string/play" />
+            android:contentDescription="Play" />
+
+        <ImageButton
+            android:id="@+id/btnPause"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_media_pause"
+            android:tint="@color/onSurface"
+            android:contentDescription="Pause" />
 
         <ImageButton
             android:id="@+id/btnStop"

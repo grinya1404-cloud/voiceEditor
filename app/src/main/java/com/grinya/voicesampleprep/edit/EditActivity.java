@@ -32,7 +32,7 @@ public class EditActivity extends AppCompatActivity
   private WaveformView wave;
   private boolean isPaused = false;
 
-  private ImageButton btnPlay, btnStop;
+  private ImageButton btnPlay, btnPause, btnStop;
   private TextView txtName, txtTime;
   private boolean isChanged = false;
 
@@ -67,6 +67,7 @@ public class EditActivity extends AppCompatActivity
     txtName = findViewById(R.id.txtName);
     txtTime = findViewById(R.id.txtTime);
     btnPlay = findViewById(R.id.btnPlay);
+    btnPause = findViewById(R.id.btnPause);
     btnStop = findViewById(R.id.btnStop);
 
     txtName.setText(clip.name);
@@ -81,6 +82,7 @@ public class EditActivity extends AppCompatActivity
     wireToolbar();
     wireTransport();
     wireTools();
+    btnPause.setEnabled(false);
   }
 
   private void wireToolbar() {
@@ -123,17 +125,20 @@ public class EditActivity extends AppCompatActivity
 
   private void wireTransport() {
     btnPlay.setOnClickListener(v -> {
+      int startFrame = isPaused ? wave.getActivePlayFrame() : wave.getPlayheadFrame();
+      player.seekToFrame(startFrame);
+      player.play();
+      isPaused = false;
+      btnPlay.setEnabled(false);
+      btnPause.setEnabled(true);
+    });
+
+    btnPause.setOnClickListener(v -> {
       if (player.isPlaying()) {
-        // Пауза
         player.pause();
         isPaused = true;
-        Toast.makeText(this, "Пауза", Toast.LENGTH_SHORT).show();
-      } else {
-        // Воспроизведение (продолжаем с текущей зелёной линии или с красной)
-        int startFrame = isPaused ? wave.getActivePlayFrame() : wave.getPlayheadFrame();
-        player.seekToFrame(startFrame);
-        player.play();
-        isPaused = false;
+        btnPlay.setEnabled(true);
+        btnPause.setEnabled(false);
       }
     });
 
@@ -141,16 +146,11 @@ public class EditActivity extends AppCompatActivity
       player.stop();
       isPaused = false;
       int ph = wave.getPlayheadFrame();
-      wave.setActivePlayheadFrame(ph);
+      wave.snapActivePlayheadFrame(ph);
       wave.setPlayheadFrame(ph);
       updateTimeLabel();
-    });
-    findViewById(R.id.btnZoomIn).setOnClickListener(v -> {
-      // эмулируем pinch зум: уменьшаем fpp в 2 раза вокруг центра
-      wave.zoomInAroundCenter(2.0);
-    });
-    findViewById(R.id.btnZoomOut).setOnClickListener(v -> {
-      wave.zoomInAroundCenter(0.5);
+      btnPlay.setEnabled(true);
+      btnPause.setEnabled(false);
     });
   }
 
@@ -324,15 +324,27 @@ public class EditActivity extends AppCompatActivity
 
   @Override
   public void onEnded() {
-    btnPlay.setImageResource(android.R.drawable.ic_media_play);
+    btnPlay.setEnabled(true);
+    btnPause.setEnabled(false);
     isPaused = false;
-    // Плеер сам сбросился в конец, поэтому зелёная линия останавливается в конце
+    // принудительно ставим линию в самый конец
+    wave.setActivePlayheadFrame(clip.frameCount());
+    updateTimeLabel();
   }
 
   @Override
   public void onStateChanged(boolean playing) {
-    btnPlay.setImageResource(
-        playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play);
+    btnPlay.setEnabled(!playing);
+    btnPause.setEnabled(playing);
+    updateTransportIcons();
+  }
+
+  private void updateTransportIcons() {
+    // Play — акцентный янтарный, если доступен; серый, если нет
+    btnPlay.setColorFilter(btnPlay.isEnabled() ? 0xFFFFB300 // accent
+        : 0xFF555555); // dim
+    // Pause — тоже акцент, когда активна, серый когда нет
+    btnPause.setColorFilter(btnPause.isEnabled() ? 0xFFFFB300 : 0xFF555555);
   }
 
   // ---------- WaveformView.Listener ----------
@@ -346,7 +358,7 @@ public class EditActivity extends AppCompatActivity
   public void onTap(int frame) {
     player.seekToFrame(frame);
     wave.setPlayheadFrame(frame);
-    wave.setActivePlayheadFrame(frame); // Зелёная тоже прыгает
+    wave.snapActivePlayheadFrame(frame);
     updateTimeLabel();
   }
 
