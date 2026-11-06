@@ -125,7 +125,20 @@ public class EditActivity extends AppCompatActivity
 
   private void wireTransport() {
     btnPlay.setOnClickListener(v -> {
-      int startFrame = isPaused ? wave.getActivePlayFrame() : wave.getPlayheadFrame();
+      int startFrame;
+      int endFrame;
+
+      if (wave.hasSelection()) {
+        // Играем только выделение
+        startFrame = wave.getSelStart();
+        endFrame = wave.getSelEnd();
+      } else {
+        // Играем от красной линии до конца (или от начала, если стоим в конце)
+        startFrame = isPaused ? wave.getActivePlayFrame() : wave.getPlayheadFrame();
+        endFrame = clip.frameCount();
+      }
+
+      player.setPlayRange(startFrame, endFrame);
       player.seekToFrame(startFrame);
       player.play();
       isPaused = false;
@@ -327,8 +340,13 @@ public class EditActivity extends AppCompatActivity
     btnPlay.setEnabled(true);
     btnPause.setEnabled(false);
     isPaused = false;
-    // принудительно ставим линию в самый конец
-    wave.setActivePlayheadFrame(clip.frameCount());
+
+    // Возвращаем плеер в режим "играть до конца"
+    player.setPlayRange(0, clip.frameCount());
+
+    // Ставим линии на место (если хочешь, чтобы после выделения возвращалось к красной линии)
+    int ph = wave.getPlayheadFrame();
+    wave.setActivePlayheadFrame(ph);
     updateTimeLabel();
   }
 
@@ -359,6 +377,9 @@ public class EditActivity extends AppCompatActivity
     player.seekToFrame(frame);
     wave.setPlayheadFrame(frame);
     wave.snapActivePlayheadFrame(frame);
+    if (wave.hasSelection()) {
+      wave.clearSelection();
+    }
     updateTimeLabel();
   }
 

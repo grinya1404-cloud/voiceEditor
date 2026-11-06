@@ -110,11 +110,15 @@ public class AudioPlayer {
     if (playing)
       return;
 
-    if (currentFrame >= totalFrames)
-      currentFrame = 0;
-    startFrame = currentFrame;
-    if (endFrame <= startFrame)
+    // Если playRange не задан (endFrame=0), играем от текущей позиции до конца
+    if (endFrame <= 0) {
+      startFrame = currentFrame;
       endFrame = totalFrames;
+    }
+    // Если текущая позиция вне диапазона — начинаем с начала диапазона
+    if (currentFrame < startFrame || currentFrame >= endFrame) {
+      currentFrame = startFrame;
+    }
 
     playing = true;
     playStartFrame = currentFrame;
@@ -249,5 +253,13 @@ public class AudioPlayer {
     stopInternal();
     this.listener = null;
     this.pcm = null;
+  }
+
+  public void setPlayRange(int startFrame, int endFrame) {
+    this.startFrame = Math.max(0, startFrame);
+    this.endFrame = Math.min(totalFrames, endFrame);
+    if (this.endFrame <= this.startFrame) {
+      this.endFrame = totalFrames;
+    }
   }
 }
