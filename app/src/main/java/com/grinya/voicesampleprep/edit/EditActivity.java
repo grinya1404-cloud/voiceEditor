@@ -172,12 +172,14 @@ public class EditActivity extends AppCompatActivity
       if (!requireSelection())
         return;
       clip.trim(wave.getSelStart(), wave.getSelEnd());
+      wave.clearSelection(); // снятие выделения
       refreshAfterChange();
     });
     findViewById(R.id.btnCut).setOnClickListener(v -> {
       if (!requireSelection())
         return;
       clip.delete(wave.getSelStart(), wave.getSelEnd());
+      wave.clearSelection(); // снятие выделения
       refreshAfterChange();
     });
     findViewById(R.id.btnSilence).setOnClickListener(v -> {
@@ -195,10 +197,17 @@ public class EditActivity extends AppCompatActivity
       refreshAfterChange();
     });
     findViewById(R.id.btnMarker).setOnClickListener(v -> {
-      int f = player.getCurrentFrame();
-      clip.addMarker(f);
+      if (wave.hasSelection()) {
+        // Ставим маркеры по краям выделения
+        clip.addMarker(wave.getSelStart());
+        clip.addMarker(wave.getSelEnd());
+      } else {
+        // Обычный маркер по курсору
+        int f = player.getCurrentFrame();
+        clip.addMarker(f);
+      }
       wave.updateMarkers(clip.markers);
-      isChanged = true; // ← добавь эту строку
+      isChanged = true;
     });
     findViewById(R.id.btnMarker).setOnLongClickListener(v -> {
       showMarkerList();
@@ -304,7 +313,7 @@ public class EditActivity extends AppCompatActivity
 
     player.setPcm(clip.pcm);
     wave.updatePcm(clip.pcm);
-    wave.clearSelection();
+    // wave.clearSelection(); // снятие выделения
 
     // после удаления позиция playhead могла выйти за пределы
     int f = Math.min(player.getCurrentFrame(), clip.frameCount());
@@ -377,10 +386,8 @@ public class EditActivity extends AppCompatActivity
     player.seekToFrame(frame);
     wave.setPlayheadFrame(frame);
     wave.snapActivePlayheadFrame(frame);
-    if (wave.hasSelection()) {
-      wave.clearSelection();
-    }
     updateTimeLabel();
+    // Выделение не трогаем
   }
 
   @Override
