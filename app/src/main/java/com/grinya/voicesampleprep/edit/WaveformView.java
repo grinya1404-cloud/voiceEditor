@@ -48,6 +48,8 @@ public class WaveformView extends View {
   private int colorGrid = 0xFF1F1F22;
   private int colorRuler = 0xFF2A2A2E;
   private int colorRulerText = 0xFF808080;
+  private int playheadFrame = 0;
+  private int activePlayFrame = 0; // Новая переменная для зелёной линии
 
   // ---------- геометрия ----------
   private static final int RULER_HEIGHT_DP = 22;
@@ -67,8 +69,6 @@ public class WaveformView extends View {
   // viewFramesPerPixel = сколько фреймов на пиксель
   private double viewStartFrame = 0;
   private double viewFramesPerPixel = 1;
-
-  private int playheadFrame = 0;
 
   // ---------- выделение ----------
   private int selStart = -1;
@@ -275,6 +275,7 @@ public class WaveformView extends View {
     this.selStart = -1;
     this.selEnd = -1;
     this.playheadFrame = 0;
+    this.activePlayFrame = 0;
     pendingFit = true; // ← запомнили, что надо отфитить, когда будет ширина
     invalidatePeakCache();
     invalidate();
@@ -290,6 +291,7 @@ public class WaveformView extends View {
       selEnd = -1;
     if (playheadFrame > totalFrames)
       playheadFrame = totalFrames;
+    this.activePlayFrame = Math.min(playheadFrame, totalFrames);
     invalidatePeakCache();
     invalidate();
   }
@@ -689,11 +691,20 @@ public class WaveformView extends View {
     }
 
     // playhead
+    // Красная линия (старт/курсор)
     float px = frameToX(playheadFrame);
     if (px >= 0 && px <= w) {
       canvas.drawLine(px, waveTop, px, waveBottom, pPlayhead);
-      // треугольник сверху
-      canvas.drawRect(px - 5, waveTop, px + 5, waveTop + 8, pPlayhead);
+      canvas.drawRect(px - 5, waveTop, px + 5, waveTop + 8, pPlayhead); // треугольник
+    }
+
+    // Зелёная линия (текущее воспроизведение)
+    float activePx = frameToX(activePlayFrame);
+    if (activePx >= 0 && activePx <= w && activePlayFrame != playheadFrame) {
+      Paint pActive = new Paint();
+      pActive.setColor(0xFF4CAF50); // Зелёный цвет
+      pActive.setStrokeWidth(3f * getResources().getDisplayMetrics().density);
+      canvas.drawLine(activePx, waveTop, activePx, waveBottom, pActive);
     }
 
     // центральная линия
@@ -794,5 +805,20 @@ public class WaveformView extends View {
   public void updateMarkers(java.util.List<Integer> newMarkers) {
     this.markers = newMarkers;
     invalidate();
+  }
+
+  public void setActivePlayheadFrame(int f) {
+    if (f == activePlayFrame)
+      return;
+    activePlayFrame = Math.max(0, Math.min(totalFrames, f));
+    invalidate();
+  }
+
+  public int getPlayheadFrame() {
+    return playheadFrame;
+  }
+
+  public int getActivePlayFrame() {
+    return activePlayFrame;
   }
 }

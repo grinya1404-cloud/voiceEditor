@@ -45,7 +45,7 @@ public class AudioPlayer {
             public void run() {
                 if (listener != null && playing) {
                     listener.onPosition(currentFrame * 1000 / RATE);
-                    ui.postDelayed(this, 33);
+                    ui.postDelayed(this, 16);
                 }
             }
         };

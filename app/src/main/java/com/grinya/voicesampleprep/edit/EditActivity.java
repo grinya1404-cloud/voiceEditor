@@ -20,6 +20,7 @@ import com.grinya.voicesampleprep.audio.AudioPlayer;
 import com.grinya.voicesampleprep.model.AudioClip;
 
 import java.util.Locale;
+import com.grinya.voicesampleprep.model.MarkerStore;
 
 public class EditActivity extends AppCompatActivity
     implements AudioPlayer.Listener, WaveformView.Listener {
@@ -29,18 +30,34 @@ public class EditActivity extends AppCompatActivity
   private AudioClip clip;
   private AudioPlayer player;
   private WaveformView wave;
+  private boolean isPaused = false;
 
   private ImageButton btnPlay, btnStop;
   private TextView txtName, txtTime;
+  private boolean isChanged = false;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_edit);
 
+    // Перехват свайпа назад
+    getOnBackPressedDispatcher().addCallback(this,
+        new androidx.activity.OnBackPressedCallback(true) {
+          @Override
+          public void handleOnBackPressed() {
+            confirmExit();
+          }
+        });
+
     Object o = getIntent().getSerializableExtra(EXTRA_CLIP);
     // AudioClip не Serializable — передаём через singleton-holder
     clip = EditActivityHolder.current;
+    // Загружаем метки с диска
+    if (clip.dir != null) {
+      clip.markers.clear();
+      clip.markers.addAll(MarkerStore.load(clip.dir));
+    }
     if (clip == null) {
       finish();
       return;
@@ -67,7 +84,7 @@ public class EditActivity extends AppCompatActivity
   }
 
   private void wireToolbar() {
-    findViewById(R.id.btnBack).setOnClickListener(v -> finish());
+    findViewById(R.id.btnBack).setOnClickListener(v -> confirmExit());
     findViewById(R.id.btnUndo).setOnClickListener(v -> {
       if (clip.canUndo()) {
         clip.undo();
@@ -82,7 +99,9 @@ public class EditActivity extends AppCompatActivity
     });
     findViewById(R.id.btnSave).setOnClickListener(v -> {
       try {
-        clip.save();
+        clip.save(); // Сохраняет PCM в WAV
+        MarkerStore.save(clip.dir, clip.markers); // Сохраняет маркеры
+        isChanged = false;
         Toast.makeText(this, "Сохранено", Toast.LENGTH_SHORT).show();
       } catch (Exception e) {
         Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -94,18 +113,37 @@ public class EditActivity extends AppCompatActivity
       ExportActivity.setSource(clip, selStart, selEnd);
       startActivity(new Intent(this, ExportActivity.class));
     });
+    findViewById(R.id.btnMarker).setOnClickListener(v -> {
+      int f = player.getCurrentFrame();
+      clip.addMarker(f);
+      wave.updateMarkers(clip.markers);
+      isChanged = true; // Маркеры изменились
+    });
   }
 
   private void wireTransport() {
     btnPlay.setOnClickListener(v -> {
-      if (player.isPlaying())
+      if (player.isPlaying()) {
+        // Пауза
         player.pause();
-      else
+        isPaused = true;
+        Toast.makeText(this, "Пауза", Toast.LENGTH_SHORT).show();
+      } else {
+        // Воспроизведение (продолжаем с текущей зелёной линии или с красной)
+        int startFrame = isPaused ? wave.getActivePlayFrame() : wave.getPlayheadFrame();
+        player.seekToFrame(startFrame);
         player.play();
+        isPaused = false;
+      }
     });
+
     btnStop.setOnClickListener(v -> {
       player.stop();
-      wave.setPlayheadFrame(0);
+      isPaused = false;
+      int ph = wave.getPlayheadFrame();
+      wave.setActivePlayheadFrame(ph);
+      wave.setPlayheadFrame(ph);
+      updateTimeLabel();
     });
     findViewById(R.id.btnZoomIn).setOnClickListener(v -> {
       // эмулируем pinch зум: уменьшаем fpp в 2 раза вокруг центра
@@ -146,7 +184,8 @@ public class EditActivity extends AppCompatActivity
     findViewById(R.id.btnMarker).setOnClickListener(v -> {
       int f = player.getCurrentFrame();
       clip.addMarker(f);
-      wave.updateMarkers(clip.markers); // перерисовать маркеры
+      wave.updateMarkers(clip.markers);
+      isChanged = true; // ← добавь эту строку
     });
     findViewById(R.id.btnMarker).setOnLongClickListener(v -> {
       showMarkerList();
@@ -245,6 +284,7 @@ public class EditActivity extends AppCompatActivity
   }
 
   private void refreshAfterChange() {
+    isChanged = true; // Помечаем, что были изменения
     boolean wasPlaying = player.isPlaying();
     if (wasPlaying)
       player.pause();
@@ -277,13 +317,16 @@ public class EditActivity extends AppCompatActivity
 
   @Override
   public void onPosition(int positionMs) {
-    wave.setPlayheadFrame(player.getCurrentFrame());
+    // Двигаем только зелёную линию, красная остаётся на месте
+    wave.setActivePlayheadFrame(player.getCurrentFrame());
     updateTimeLabel();
   }
 
   @Override
   public void onEnded() {
     btnPlay.setImageResource(android.R.drawable.ic_media_play);
+    isPaused = false;
+    // Плеер сам сбросился в конец, поэтому зелёная линия останавливается в конце
   }
 
   @Override
@@ -301,15 +344,16 @@ public class EditActivity extends AppCompatActivity
 
   @Override
   public void onTap(int frame) {
-    // тап по волне — перемещаем playhead
     player.seekToFrame(frame);
     wave.setPlayheadFrame(frame);
+    wave.setActivePlayheadFrame(frame); // Зелёная тоже прыгает
     updateTimeLabel();
   }
 
   @Override
   public void onPlayheadDragged(int frame) {
     player.seekToFrame(frame);
+    wave.setActivePlayheadFrame(frame);
     updateTimeLabel();
   }
 
@@ -337,12 +381,12 @@ public class EditActivity extends AppCompatActivity
 
   @Override
   public void onMarkerLongPressed(int frame) {
-    // Долгий тап — меню удаления
     String time = formatMs(frame * 1000 / clip.sampleRate);
     new AlertDialog.Builder(this).setTitle("Маркер @" + time)
         .setPositiveButton("Удалить", (d, which) -> {
           clip.removeMarker(frame);
           wave.updateMarkers(clip.markers);
+          isChanged = true; // Маркеры изменились
         }).setNegativeButton("Отмена", null).show();
   }
 
@@ -373,4 +417,30 @@ public class EditActivity extends AppCompatActivity
     wave.setPlayheadFrame(frame);
     updateTimeLabel();
   }
+
+  private void confirmExit() {
+    if (isChanged) {
+      new AlertDialog.Builder(this).setTitle("Выйти без сохранения?")
+          .setMessage("В файле есть несохранённые изменения.")
+          .setPositiveButton("Сохранить", (d, w) -> {
+            try {
+              clip.save();
+              MarkerStore.save(clip.dir, clip.markers);
+              isChanged = false;
+              finish();
+            } catch (Exception e) {
+              Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+          }).setNegativeButton("Выйти без сохранения", (d, w) -> finish())
+          .setNeutralButton("Отмена", null).show();
+    } else {
+      finish();
+    }
+  }
+
+  @Override
+  public void onBackPressed() {
+    confirmExit();
+  }
+
 }
