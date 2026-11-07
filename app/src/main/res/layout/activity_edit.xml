@@ -176,6 +176,13 @@
                 android:text="@string/cut" />
 
             <Button
+                android:id="@+id/btnInsert"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/insert"/>
+
+            <Button
                 android:id="@+id/btnSilence"
                 style="?android:attr/buttonStyleSmall"
                 android:layout_width="wrap_content"

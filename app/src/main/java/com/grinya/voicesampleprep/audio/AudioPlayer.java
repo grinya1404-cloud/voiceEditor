@@ -163,14 +163,18 @@ public class AudioPlayer {
         t.play();
 
         // Ждем окончания или паузы
+        long startTime = System.currentTimeMillis();
+        long durationMs = (long) (durationSec * 1000);
+
+        // Ждём окончания или паузы
         while (playing) {
           try {
             Thread.sleep(20);
           } catch (InterruptedException ignored) {
           }
-          // Если трек закончил играть сам — выходим
-          if (t.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) {
-            break;
+          long elapsed = System.currentTimeMillis() - startTime;
+          if (elapsed >= durationMs) {
+            break; // Время вышло — считаем, что доиграли
           }
         }
 
@@ -188,6 +192,10 @@ public class AudioPlayer {
 
         // Финалим currentFrame
         currentFrame = endFrame;
+        if (currentFrame < endFrame) {
+          currentFrame = endFrame; // Если доиграли до конца, ставим финальную позицию
+        }
+        playing = false;
         ui.post(() -> {
           if (listener != null) {
             listener.onStateChanged(false);

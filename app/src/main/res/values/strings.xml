@@ -9,6 +9,7 @@
     <string name="stop">Stop</string>
     <string name="trim">Trim</string>
     <string name="cut">Cut</string>
+    <string name="insert">Insert</string>
     <string name="silence">Silence</string>
     <string name="gain">Gain</string>
     <string name="normalize">Normalize</string>

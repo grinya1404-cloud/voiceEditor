@@ -238,4 +238,54 @@ public class AudioClip {
       throw new java.io.IOException("No file");
     com.grinya.voicesampleprep.audio.WavWriter.write(dir, pcm, sampleRate, sampleRate, 16, false);
   }
+
+  /**
+   * Вставка нового звука. Если selStart != selEnd (есть выделение) — заменяем этот кусок. Если нет — просто вставляем в точку atFrame.
+   */
+  public void insert(float[] newPcm, int atFrame, int selStart, int selEnd) {
+    pushHistory();
+
+    int totalFrames = frameCount();
+    int newFrames = newPcm.length / CHANNELS;
+
+    int startReplace, endReplace;
+    if (selStart >= 0 && selEnd > selStart) {
+      startReplace = Math.max(0, Math.min(selStart, totalFrames));
+      endReplace = Math.max(startReplace, Math.min(selEnd, totalFrames));
+    } else {
+      startReplace = Math.max(0, Math.min(atFrame, totalFrames));
+      endReplace = startReplace; // ничего не удаляем, только вставляем
+    }
+
+    int removedFrames = endReplace - startReplace;
+    int newTotalFrames = totalFrames - removedFrames + newFrames;
+    float[] out = new float[newTotalFrames * CHANNELS];
+
+    // 1. Копируем начало
+    System.arraycopy(pcm, 0, out, 0, startReplace * CHANNELS);
+    // 2. Вставляем новый кусок
+    System.arraycopy(newPcm, 0, out, startReplace * CHANNELS, newPcm.length);
+    // 3. Копируем остаток
+    System.arraycopy(pcm, endReplace * CHANNELS, out, (startReplace + newFrames) * CHANNELS,
+        (totalFrames - endReplace) * CHANNELS);
+
+    pcm = out;
+
+    // Обновляем маркеры
+    int delta = newFrames - removedFrames;
+    List<Integer> newMarkers = new ArrayList<>();
+
+    for (int m : markers) {
+      if (m < startReplace) {
+        // до места вставки — без изменений
+        newMarkers.add(m);
+      } else if (m >= endReplace) {
+        // после — сдвигаем
+        newMarkers.add(m + delta);
+      }
+      // маркеры внутри заменяемого диапазона удаляются (мы их просто не добавляем)
+    }
+    Collections.sort(newMarkers);
+    markers = newMarkers;
+  }
 }

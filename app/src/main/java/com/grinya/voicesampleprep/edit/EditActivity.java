@@ -12,6 +12,9 @@ import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import android.net.Uri;
+import com.grinya.voicesampleprep.audio.AudioDecoder;
+
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -35,6 +38,8 @@ public class EditActivity extends AppCompatActivity
   private ImageButton btnPlay, btnPause, btnStop;
   private TextView txtName, txtTime;
   private boolean isChanged = false;
+
+  private static final int REQ_INSERT = 5001;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -179,6 +184,14 @@ public class EditActivity extends AppCompatActivity
       clip.delete(wave.getSelStart(), wave.getSelEnd());
       wave.clearSelection(); // снятие выделения
       refreshAfterChange();
+    });
+    findViewById(R.id.btnInsert).setOnClickListener(v -> {
+      Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+      i.addCategory(Intent.CATEGORY_OPENABLE);
+      i.setType("*/*");
+      i.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "audio/wav", "audio/x-wav", "audio/mpeg",
+          "audio/mp4", "audio/aac", "audio/flac", "audio/x-flac", "audio/*" });
+      startActivityForResult(i, REQ_INSERT);
     });
     findViewById(R.id.btnSilence).setOnClickListener(v -> {
       if (!requireSelection())
@@ -401,6 +414,50 @@ public class EditActivity extends AppCompatActivity
   }
 
   @Override
+  protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+    super.onActivityResult(requestCode, resultCode, data);
+    if (requestCode == REQ_INSERT && resultCode == RESULT_OK && data != null) {
+      Uri uri = data.getData();
+      if (uri == null)
+        return;
+
+      new Thread(() -> {
+        try {
+          // Копируем выбранный файл во временный
+          java.io.File tmp = new java.io.File(getCacheDir(), "insert_tmp");
+          try (java.io.InputStream in = getContentResolver().openInputStream(uri);
+              java.io.FileOutputStream out = new java.io.FileOutputStream(tmp)) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0)
+              out.write(buf, 0, n);
+          }
+
+          // Декодируем в PCM стерео 48кГц
+          com.grinya.voicesampleprep.audio.AudioDecoder.Result res = com.grinya.voicesampleprep.audio.AudioDecoder
+              .decode(tmp);
+          tmp.delete();
+
+          final float[] newPcm = res.pcm;
+          final int atFrame = player.getCurrentFrame();
+          final int selStart = wave.getSelStart();
+          final int selEnd = wave.getSelEnd();
+
+          runOnUiThread(() -> {
+            clip.insert(newPcm, atFrame, selStart, selEnd);
+            wave.clearSelection();
+            refreshAfterChange();
+            Toast.makeText(this, "Вставлено", Toast.LENGTH_SHORT).show();
+          });
+        } catch (Exception e) {
+          runOnUiThread(() -> Toast
+              .makeText(this, "Ошибка вставки: " + e.getMessage(), Toast.LENGTH_LONG).show());
+        }
+      }).start();
+    }
+  }
+
+  @Override
   protected void onDestroy() {
     super.onDestroy();
     if (player != null)
@@ -455,6 +512,8 @@ public class EditActivity extends AppCompatActivity
   }
 
   private void confirmExit() {
+    // времянка удалить
+    android.util.Log.d("EXIT", "confirmExit, isChanged=" + isChanged);
     if (isChanged) {
       new AlertDialog.Builder(this).setTitle("Выйти без сохранения?")
           .setMessage("В файле есть несохранённые изменения.")
@@ -476,6 +535,8 @@ public class EditActivity extends AppCompatActivity
 
   @Override
   public void onBackPressed() {
+    // времянка удалить
+    android.util.Log.d("EXIT", "onBackPressed, isChanged=" + isChanged);
     confirmExit();
   }
 
