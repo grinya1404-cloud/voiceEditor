@@ -136,8 +136,8 @@ public class ExportActivity extends AppCompatActivity {
             rangePcm = AudioOps.normalizePeak(rangePcm, 0.9f);
           if (fade) {
             int ff = source.sampleRate * 5 / 1000;
-            rangePcm = AudioOps.fadeIn(rangePcm, ff);
-            rangePcm = AudioOps.fadeOut(rangePcm, ff);
+            rangePcm = AudioOps.fadeIn(rangePcm, ff, true, true);
+            rangePcm = AudioOps.fadeOut(rangePcm, ff, true, true);
           }
 
           // Формируем базовое имя без .wav

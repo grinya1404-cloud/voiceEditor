@@ -50,46 +50,82 @@ public class AudioClip {
     fixMarkersAfterDelete(startFrame, endFrame);
   }
 
-  public void silence(int startFrame, int endFrame) {
-    pushHistory();
-    pcm = AudioOps.silenceRange(pcm, startFrame, endFrame);
-  }
-
   public void gain(float dB) {
     pushHistory();
     pcm = AudioOps.gain(pcm, dB);
   }
 
-  public void gainRange(int startFrame, int endFrame, float dB) {
+  public void silence(int startFrame, int endFrame, boolean applyL, boolean applyR) {
     pushHistory();
-    pcm = AudioOps.gainRange(pcm, startFrame, endFrame, dB);
+    pcm = AudioOps.silenceRange(pcm, startFrame, endFrame, applyL, applyR);
   }
 
-  public void normalizePeak(float target) {
+  public void gainRange(int startFrame, int endFrame, float dB, boolean applyL, boolean applyR) {
     pushHistory();
-    pcm = AudioOps.normalizePeak(pcm, target);
+    pcm = AudioOps.gainRange(pcm, startFrame, endFrame, dB, applyL, applyR);
   }
 
-  public void fadeIn(int fadeFrames) {
+  public void normalizeRangePeak(int startFrame, int endFrame, float target, boolean applyL,
+      boolean applyR) {
     pushHistory();
-    pcm = AudioOps.fadeIn(pcm, fadeFrames);
+    pcm = AudioOps.normalizeRangePeak(pcm, startFrame, endFrame, target, applyL, applyR);
   }
 
-  public void fadeOut(int fadeFrames) {
+  public void normalizePeak(float target, boolean applyL, boolean applyR) {
     pushHistory();
-    pcm = AudioOps.fadeOut(pcm, fadeFrames);
+    // Если оба канала включены — используем старый быстрый метод (нормализация всего файла)
+    if (applyL && applyR) {
+      pcm = AudioOps.normalizePeak(pcm, target);
+    } else {
+      // Если выбран только один канал — используем диапазонный метод на весь файл
+      pcm = AudioOps.normalizeRangePeak(pcm, 0, frameCount(), target, applyL, applyR);
+    }
   }
 
-  public void reverse() {
+  public void fadeIn(int fadeFrames, boolean applyL, boolean applyR) {
     pushHistory();
-    pcm = AudioOps.reverse(pcm);
-    // маркеры зеркалим
+    pcm = AudioOps.fadeIn(pcm, fadeFrames, applyL, applyR);
+  }
+
+  public void fadeOut(int fadeFrames, boolean applyL, boolean applyR) {
+    pushHistory();
+    pcm = AudioOps.fadeOut(pcm, fadeFrames, applyL, applyR);
+  }
+
+  public void reverse(boolean applyL, boolean applyR) {
+    pushHistory();
+    pcm = AudioOps.reverse(pcm, applyL, applyR);
     int total = frameCount();
     List<Integer> newMarkers = new ArrayList<>();
     for (int m : markers)
       newMarkers.add(total - 1 - m);
     Collections.sort(newMarkers);
     markers = newMarkers;
+  }
+
+  public void reverseRange(int startFrame, int endFrame, boolean applyL, boolean applyR) {
+    pushHistory();
+    pcm = AudioOps.reverseRange(pcm, startFrame, endFrame, applyL, applyR);
+
+    // Пересчитываем маркеры (только те, что внутри диапазона)
+    int s = Math.max(0, Math.min(startFrame, frameCount()));
+    int e = Math.max(s, Math.min(endFrame, frameCount()));
+    List<Integer> newMarkers = new ArrayList<>();
+    for (int m : markers) {
+      if (m >= s && m < e) {
+        // зеркалим внутри диапазона
+        newMarkers.add(s + (e - 1 - m));
+      } else {
+        newMarkers.add(m);
+      }
+    }
+    Collections.sort(newMarkers);
+    markers = newMarkers;
+  }
+
+  public void invertPhaseRange(int startFrame, int endFrame, boolean applyL, boolean applyR) {
+    pushHistory();
+    pcm = AudioOps.invertPhase(pcm, startFrame, endFrame, applyL, applyR);
   }
 
   public void setPcm(float[] newPcm) {
@@ -179,9 +215,10 @@ public class AudioClip {
     markers = out;
   }
 
-  /** Применить fade in к диапазону [startFrame, endFrame). */
-  public void fadeInRange(int startFrame, int endFrame, int fadeFrames) {
+  public void fadeInRange(int startFrame, int endFrame, int fadeFrames, boolean applyL,
+      boolean applyR) {
     pushHistory();
+    // (тут цикл как в AudioOps.fadeIn, но с s/e)
     int total = frameCount();
     int s = Math.max(0, Math.min(startFrame, total));
     int e = Math.max(s, Math.min(endFrame, total));
@@ -191,13 +228,15 @@ public class AudioClip {
     for (int i = 0; i < n; i++) {
       float g = (float) i / n;
       int idx = (s + i) * CHANNELS;
-      pcm[idx] *= g;
-      pcm[idx + 1] *= g;
+      if (applyL)
+        pcm[idx] *= g;
+      if (applyR)
+        pcm[idx + 1] *= g;
     }
   }
 
-  /** Применить fade out к диапазону [startFrame, endFrame). */
-  public void fadeOutRange(int startFrame, int endFrame, int fadeFrames) {
+  public void fadeOutRange(int startFrame, int endFrame, int fadeFrames, boolean applyL,
+      boolean applyR) {
     pushHistory();
     int total = frameCount();
     int s = Math.max(0, Math.min(startFrame, total));
@@ -208,8 +247,10 @@ public class AudioClip {
     for (int i = 0; i < n; i++) {
       float g = 1f - (float) i / n;
       int idx = (e - n + i) * CHANNELS;
-      pcm[idx] *= g;
-      pcm[idx + 1] *= g;
+      if (applyL)
+        pcm[idx] *= g;
+      if (applyR)
+        pcm[idx + 1] *= g;
     }
   }
 

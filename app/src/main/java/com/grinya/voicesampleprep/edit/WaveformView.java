@@ -2,7 +2,6 @@ package com.grinya.voicesampleprep.edit;
 
 import android.content.Context;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.util.AttributeSet;
@@ -15,111 +14,96 @@ import androidx.annotation.Nullable;
 
 import java.util.List;
 
-/**
- * Вьюха для отображения и редактирования PCM. - Multi-resolution peak-cache. - Pinch-zoom по X (и Y отдельно двумя пальцами — не делаем, чтобы не путать). - Скролл по X. - Выделение диапазона с ручками. - Маркеры (тап по линейке). - Playhead.
- */
 public class WaveformView extends View {
 
   public interface Listener {
-    /** Выделение изменилось. */
     void onSelectionChanged(int startFrame, int endFrame);
 
-    /** Тап по волне (не выделение). */
     void onTap(int frame);
 
-    /** Маркеры изменились (по тапу с Shift — не будем, отдельный режим). */
     void onPlayheadDragged(int frame);
 
-    /** Тап по существующему маркеру. */
     void onMarkerTapped(int frame);
 
     void onMarkerLongPressed(int frame);
+
+    void onChannelToggled(boolean left, boolean right);
   }
 
   // ---------- цвета ----------
   private int colorBg = 0xFF0E0E10;
   private int colorWave = 0xFF9AA0A6;
-  private int colorWaveSelected = 0xFFFFB300;
   private int colorCenterLine = 0xFF2A2A2E;
   private int colorPlayhead = 0xFFFF3B30;
+  private int colorActivePlayhead = 0xFF4CAF50;
   private int colorSelection = 0x33FFB300;
   private int colorSelectionBorder = 0xFFFFB300;
   private int colorMarker = 0xFF4FC3F7;
   private int colorGrid = 0xFF1F1F22;
   private int colorRuler = 0xFF2A2A2E;
   private int colorRulerText = 0xFF808080;
-  private int playheadFrame = 0;
-  private int activePlayFrame = 0; // Новая переменная для зелёной линии
-  // private int targetActiveFrame = 0;
-  // private android.view.Choreographer.FrameCallback frameCallback;
-  // private boolean isAnimating = false;
+  private int colorCheck = 0xFFFFB300;
 
-  // ---------- геометрия ----------
   private static final int RULER_HEIGHT_DP = 22;
   private static final int HANDLE_HALF_DP = 10;
-  private static final int MARKER_FLAG_W_DP = 10; // ширина ярлычка
-  private static final int MARKER_FLAG_H_DP = 14; // высота ярлычка
+  private static final int MARKER_FLAG_W_DP = 10;
+  private static final int MARKER_FLAG_H_DP = 14;
 
-  // ---------- данные ----------
   private float[] pcm;
   private int totalFrames = 0;
   private int sampleRate = 48000;
   private List<Integer> markers;
-  private boolean pendingFit = false;
 
-  // ---------- viewport ----------
-  // viewStartFrame = первый фрейм, соответствующий x=0
-  // viewFramesPerPixel = сколько фреймов на пиксель
   private double viewStartFrame = 0;
   private double viewFramesPerPixel = 1;
+  private int playheadFrame = 0;
+  private int activePlayFrame = 0;
 
-  // ---------- выделение ----------
   private int selStart = -1;
   private int selEnd = -1;
-  private int markerFlagW;
-  private int markerFlagH;
 
-  // ---------- paints ----------
+  private boolean stereoView = false;
+  private boolean channelL = true;
+  private boolean channelR = true;
+  private float checkLx, checkLy, checkRx, checkRy;
+  private int checkSize;
+
   private final Paint pWave = new Paint(Paint.ANTI_ALIAS_FLAG);
-  private final Paint pWaveSel = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final Paint pCenter = new Paint();
   private final Paint pPlayhead = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Paint pActivePlayhead = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final Paint pSel = new Paint();
   private final Paint pSelBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final Paint pMarker = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Paint pMarkerFill = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final Paint pGrid = new Paint();
   private final Paint pRuler = new Paint();
   private final Paint pRulerText = new Paint(Paint.ANTI_ALIAS_FLAG);
-  private final Paint pMarkerFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Paint pCheck = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Paint pCheckBg = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Paint pChannelText = new Paint(Paint.ANTI_ALIAS_FLAG);
 
   private final Path wavePath = new Path();
 
-  // ---------- жесты ----------
   private GestureDetector gestureDetector;
   private ScaleGestureDetector scaleDetector;
   private Listener listener;
 
-  // drag state
   private static final int DRAG_NONE = 0;
   private static final int DRAG_SCROLL = 1;
   private static final int DRAG_SEL_START = 2;
   private static final int DRAG_SEL_END = 3;
   private static final int DRAG_NEW_SELECTION = 4;
   private int dragMode = DRAG_NONE;
-  private float lastTouchX;
-  private float downX;
-  private float downY;
-  private int downSelStart;
-  private int downSelEnd;
-
-  private static final int DRAG_LONG_PRESS_PENDING = 5;
+  private float lastTouchX, downX, downY;
+  private int downSelStart, downSelEnd;
   private boolean longPressActivated = false;
   private int downMarkerFrame = -1;
+
   private final Runnable longPressRunnable = new Runnable() {
     @Override
     public void run() {
       if (downMarkerFrame != -1) {
-        // Долгий тап по маркеру
         if (listener != null)
           listener.onMarkerLongPressed(downMarkerFrame);
         longPressActivated = true;
@@ -127,8 +111,7 @@ public class WaveformView extends View {
         performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
         return;
       }
-      // Стандартный долгий тап (создание выделения)
-      if (dragMode == DRAG_SCROLL || dragMode == DRAG_LONG_PRESS_PENDING) {
+      if (dragMode == DRAG_SCROLL) {
         longPressActivated = true;
         dragMode = DRAG_NEW_SELECTION;
         int f = xToFrame(downX);
@@ -143,13 +126,11 @@ public class WaveformView extends View {
 
   private int rulerHeightPx;
   private int handleHalfPx;
+  private int markerFlagW;
+  private int markerFlagH;
 
-  // ---------- peak cache ----------
-  // Кэш: для каждого пикселя при текущем viewFramesPerPixel храним min/max.
-  // Пересчитывается при изменении зума/скролла.
   private float[] peakMin;
   private float[] peakMax;
-  private boolean showStereoWaves = false;
   private float[] peakMinR;
   private float[] peakMaxR;
   private int peakCacheWidth = 0;
@@ -177,20 +158,20 @@ public class WaveformView extends View {
     handleHalfPx = (int) (HANDLE_HALF_DP * density);
     markerFlagW = (int) (MARKER_FLAG_W_DP * density);
     markerFlagH = (int) (MARKER_FLAG_H_DP * density);
+    checkSize = (int) (24 * density);
 
     pWave.setColor(colorWave);
-    pWave.setStrokeWidth(1f);
+    pWave.setStrokeWidth(1.5f);
     pWave.setStyle(Paint.Style.STROKE);
-
-    pWaveSel.setColor(colorWaveSelected);
-    pWaveSel.setStrokeWidth(1f);
-    pWaveSel.setStyle(Paint.Style.STROKE);
 
     pCenter.setColor(colorCenterLine);
     pCenter.setStrokeWidth(1f);
 
     pPlayhead.setColor(colorPlayhead);
     pPlayhead.setStrokeWidth(2f * density);
+
+    pActivePlayhead.setColor(colorActivePlayhead);
+    pActivePlayhead.setStrokeWidth(3f * density);
 
     pSel.setColor(colorSelection);
     pSel.setStyle(Paint.Style.FILL);
@@ -214,6 +195,16 @@ public class WaveformView extends View {
     pRulerText.setColor(colorRulerText);
     pRulerText.setTextSize(10f * density);
 
+    pCheck.setColor(colorCheck);
+    pCheck.setStyle(Paint.Style.FILL);
+
+    pCheckBg.setColor(0xCC1A1A1E);
+    pCheckBg.setStyle(Paint.Style.FILL);
+
+    pChannelText.setColor(0xFFE8E8EA); // Светлый цвет
+    pChannelText.setTextSize(12f * density);
+    pChannelText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+
     setBackgroundColor(colorBg);
 
     gestureDetector = new GestureDetector(c, new GestureDetector.SimpleOnGestureListener() {
@@ -224,17 +215,13 @@ public class WaveformView extends View {
 
       @Override
       public boolean onDoubleTap(MotionEvent e) {
-        // сброс зума/скролла
-        viewStartFrame = 0;
-        viewFramesPerPixel = totalFrames > 0 ? (double) totalFrames / Math.max(1, getWidth()) : 1;
-        invalidatePeakCache();
-        invalidate();
+        zoomToFit();
         return true;
       }
 
       @Override
       public boolean onSingleTapUp(MotionEvent e) {
-        return false; // тап обрабатывается в ACTION_UP
+        return false;
       }
     });
 
@@ -242,17 +229,17 @@ public class WaveformView extends View {
         new ScaleGestureDetector.SimpleOnScaleGestureListener() {
           @Override
           public boolean onScale(ScaleGestureDetector d) {
+            if (totalFrames == 0)
+              return true;
             double oldFpp = viewFramesPerPixel;
             double newFpp = oldFpp / d.getScaleFactor();
-            // ограничения
-            double minFpp = 1.0 / 8.0; // максимум зума: 8 px на фрейм
-            double maxFpp = Math.max(1, totalFrames); // минимум: весь файл на 1 px (и больше)
+            double minFpp = 1.0 / 8.0;
+            double maxFpp = Math.max(1, totalFrames);
             if (newFpp < minFpp)
               newFpp = minFpp;
             if (newFpp > maxFpp)
               newFpp = maxFpp;
 
-            // точка фокуса под пальцами
             float fx = d.getFocusX();
             double focusFrame = viewStartFrame + fx * oldFpp;
             viewStartFrame = focusFrame - fx * newFpp;
@@ -265,10 +252,14 @@ public class WaveformView extends View {
         });
   }
 
-  // ---------- публичный API ----------
-
   public void setListener(Listener l) {
     this.listener = l;
+  }
+
+  public void setStereoView(boolean stereo) {
+    this.stereoView = stereo;
+    invalidatePeakCache();
+    invalidate();
   }
 
   public void setData(float[] pcm, int sampleRate, List<Integer> markers) {
@@ -277,17 +268,15 @@ public class WaveformView extends View {
     this.markers = markers;
     this.totalFrames = pcm == null ? 0 : pcm.length / 2;
     this.viewStartFrame = 0;
-    this.viewFramesPerPixel = 1; // временно
+    this.viewFramesPerPixel = 1;
     this.selStart = -1;
     this.selEnd = -1;
     this.playheadFrame = 0;
     this.activePlayFrame = 0;
-    pendingFit = true; // ← запомнили, что надо отфитить, когда будет ширина
     invalidatePeakCache();
     invalidate();
   }
 
-  /** Обновить только PCM (после операции), сохранив viewport. */
   public void updatePcm(float[] newPcm) {
     this.pcm = newPcm;
     this.totalFrames = newPcm == null ? 0 : newPcm.length / 2;
@@ -297,16 +286,38 @@ public class WaveformView extends View {
       selEnd = -1;
     if (playheadFrame > totalFrames)
       playheadFrame = totalFrames;
-    this.activePlayFrame = Math.min(playheadFrame, totalFrames);
+    if (activePlayFrame > totalFrames)
+      activePlayFrame = totalFrames;
     invalidatePeakCache();
     invalidate();
   }
 
+  public void updateMarkers(List<Integer> newMarkers) {
+    this.markers = newMarkers;
+    invalidate();
+  }
+
   public void setPlayheadFrame(int f) {
-    if (f == playheadFrame)
-      return;
     playheadFrame = Math.max(0, Math.min(totalFrames, f));
     invalidate();
+  }
+
+  public void setActivePlayheadFrame(int f) {
+    activePlayFrame = Math.max(0, Math.min(totalFrames, f));
+    invalidate();
+  }
+
+  public void snapActivePlayheadFrame(int f) {
+    activePlayFrame = Math.max(0, Math.min(totalFrames, f));
+    invalidate();
+  }
+
+  public int getPlayheadFrame() {
+    return playheadFrame;
+  }
+
+  public int getActivePlayFrame() {
+    return activePlayFrame;
   }
 
   public void setSelection(int start, int end) {
@@ -346,7 +357,6 @@ public class WaveformView extends View {
     return selStart >= 0 && selEnd > selStart;
   }
 
-  /** Показать/скрыть сетку времени (по умолчанию показана). */
   public void zoomToFit() {
     int w = getWidth();
     if (w <= 0 || totalFrames <= 0)
@@ -358,14 +368,41 @@ public class WaveformView extends View {
     invalidate();
   }
 
-  // ---------- жесты ----------
+  public void zoomInAroundCenter(double factor) {
+    if (totalFrames == 0)
+      return;
+    double oldFpp = viewFramesPerPixel;
+    double newFpp = oldFpp / factor;
+    double minFpp = 1.0 / 8.0;
+    double maxFpp = Math.max(1, totalFrames);
+    if (newFpp < minFpp)
+      newFpp = minFpp;
+    if (newFpp > maxFpp)
+      newFpp = maxFpp;
+    float cx = getWidth() / 2f;
+    double focusFrame = viewStartFrame + cx * oldFpp;
+    viewStartFrame = focusFrame - cx * newFpp;
+    viewFramesPerPixel = newFpp;
+    clampView();
+    invalidatePeakCache();
+    invalidate();
+  }
+
+  public void centerOnFrame(int frame) {
+    int w = getWidth();
+    if (w <= 0)
+      return;
+    viewStartFrame = frame - (w / 2.0) * viewFramesPerPixel;
+    clampView();
+    invalidatePeakCache();
+    invalidate();
+  }
 
   @Override
   public boolean onTouchEvent(MotionEvent e) {
     scaleDetector.onTouchEvent(e);
-    gestureDetector.onTouchEvent(e); // нужен только для double-tap
+    gestureDetector.onTouchEvent(e);
 
-    // тап по линейке
     if (e.getActionMasked() == MotionEvent.ACTION_DOWN && e.getY() < rulerHeightPx) {
       playheadFrame = xToFrame(e.getX());
       invalidate();
@@ -383,7 +420,29 @@ public class WaveformView extends View {
         downSelStart = selStart;
         downSelEnd = selEnd;
 
-        // 1. Проверка на попадание в ручки выделения
+        if (stereoView) {
+          if (e.getX() >= checkLx && e.getX() <= checkLx + checkSize && e.getY() >= checkLy
+              && e.getY() <= checkLy + checkSize) {
+            if (!channelR)
+              return true;
+            channelL = !channelL;
+            invalidate();
+            if (listener != null)
+              listener.onChannelToggled(channelL, channelR);
+            return true;
+          }
+          if (e.getX() >= checkRx && e.getX() <= checkRx + checkSize && e.getY() >= checkRy
+              && e.getY() <= checkRy + checkSize) {
+            if (!channelL)
+              return true;
+            channelR = !channelR;
+            invalidate();
+            if (listener != null)
+              listener.onChannelToggled(channelL, channelR);
+            return true;
+          }
+        }
+
         if (hasSelection() && e.getY() >= rulerHeightPx) {
           float sxStart = frameToX(selStart);
           float sxEnd = frameToX(selEnd);
@@ -397,7 +456,6 @@ public class WaveformView extends View {
           }
         }
 
-        // 2. Проверка на попадание в маркер (увеличенная зона: 20px влево и вправо)
         downMarkerFrame = -1;
         if (markers != null) {
           for (int m : markers) {
@@ -409,7 +467,6 @@ public class WaveformView extends View {
           }
         }
 
-        // 3. Инициализация скролла и таймера долгого нажатия
         dragMode = DRAG_SCROLL;
         longPressActivated = false;
         postDelayed(longPressRunnable, 350);
@@ -418,11 +475,9 @@ public class WaveformView extends View {
       case MotionEvent.ACTION_MOVE:
         if (scaleDetector.isInProgress())
           return true;
-
-        // Если сдвинули палец больше чем на 12px — отменяем долгий тап
         if (!longPressActivated && Math.abs(e.getX() - downX) + Math.abs(e.getY() - downY) > 12) {
           removeCallbacks(longPressRunnable);
-          downMarkerFrame = -1; // Сбрасываем, так как это уже скролл, а не тап по маркеру
+          downMarkerFrame = -1;
         }
 
         if (dragMode == DRAG_SCROLL) {
@@ -472,21 +527,17 @@ public class WaveformView extends View {
       case MotionEvent.ACTION_CANCEL:
         removeCallbacks(longPressRunnable);
 
-        // Если это был короткий тап (не долгий и не скролл)
         if (e.getActionMasked() == MotionEvent.ACTION_UP && Math.abs(e.getX() - downX) < 8
             && Math.abs(e.getY() - downY) < 8 && e.getY() >= rulerHeightPx && !longPressActivated) {
 
           if (downMarkerFrame != -1) {
-            // Короткий тап по маркеру — переход
             if (listener != null)
               listener.onMarkerTapped(downMarkerFrame);
           } else {
-            // Короткий тап по волне — перемещение playhead
             if (listener != null)
               listener.onTap(xToFrame(e.getX()));
           }
         }
-
         dragMode = DRAG_NONE;
         downMarkerFrame = -1;
         longPressActivated = false;
@@ -494,7 +545,6 @@ public class WaveformView extends View {
     }
     return super.onTouchEvent(e);
   }
-  // ---------- преобразования ----------
 
   private int xToFrame(float x) {
     double f = viewStartFrame + x * viewFramesPerPixel;
@@ -518,38 +568,32 @@ public class WaveformView extends View {
       viewStartFrame = maxStart;
   }
 
-  // ---------- отрисовка ----------
-
   @Override
   protected void onSizeChanged(int w, int h, int ow, int oh) {
     super.onSizeChanged(w, h, ow, oh);
-    if (w > 0 && totalFrames > 0 && (pendingFit || viewFramesPerPixel <= 0)) {
-      zoomToFit();
-      pendingFit = false;
-    } else {
-      invalidatePeakCache();
+    if (w > 0 && totalFrames > 0) {
+      if (viewFramesPerPixel <= 1)
+        zoomToFit();
     }
+    invalidatePeakCache();
   }
 
   private void invalidatePeakCache() {
-    peakCacheWidth = 0; // пересчитаем на следующей отрисовке
+    peakCacheWidth = 0;
   }
 
   private void buildPeakCache(int width) {
     if (pcm == null || totalFrames == 0 || width <= 0) {
       peakCacheWidth = width;
-      peakCacheStart = viewStartFrame;
-      peakCacheFpp = viewFramesPerPixel;
       return;
     }
-
-    double start = viewStartFrame;
-    double fpp = viewFramesPerPixel;
-
     peakMin = new float[width];
     peakMax = new float[width];
     peakMinR = new float[width];
     peakMaxR = new float[width];
+
+    double start = viewStartFrame;
+    double fpp = viewFramesPerPixel;
 
     for (int x = 0; x < width; x++) {
       int f0 = (int) Math.floor(start + x * fpp);
@@ -577,7 +621,6 @@ public class WaveformView extends View {
         if (r > maxR)
           maxR = r;
       }
-      // Обрабатываем случай f1-f0 < 64 (последний пиксель)
       if (step > 1 && f0 + step < f1) {
         for (int f = f0; f < f1; f++) {
           float l = pcm[f * 2];
@@ -592,7 +635,6 @@ public class WaveformView extends View {
             maxR = r;
         }
       }
-
       peakMin[x] = minL;
       peakMax[x] = maxL;
       peakMinR[x] = minR;
@@ -609,10 +651,6 @@ public class WaveformView extends View {
     int h = getHeight();
     if (w <= 0 || h <= 0)
       return;
-    if (pendingFit) {
-      zoomToFit();
-      pendingFit = false;
-    }
 
     int rulerH = rulerHeightPx;
     int waveTop = rulerH;
@@ -620,36 +658,29 @@ public class WaveformView extends View {
     int waveH = waveBottom - waveTop;
     int centerY = waveTop + waveH / 2;
 
-    // линейка
     canvas.drawRect(0, 0, w, rulerH, pRuler);
     drawRuler(canvas, w, rulerH);
 
     if (pcm == null || totalFrames == 0) {
-      // пусто
       canvas.drawLine(0, centerY, w, centerY, pCenter);
       return;
     }
 
-    // сетка
-    drawGrid(canvas, w, waveTop, waveBottom, centerY);
+    drawGrid(canvas, w, waveTop, waveBottom);
 
-    // peak cache
     if (peakCacheWidth != w || peakCacheStart != viewStartFrame
         || peakCacheFpp != viewFramesPerPixel) {
       buildPeakCache(w);
     }
 
-    // выделение (под волной)
     if (hasSelection()) {
       float sx0 = frameToX(selStart);
       float sx1 = frameToX(selEnd);
       canvas.drawRect(sx0, waveTop, sx1, waveBottom, pSel);
     }
 
-    // волна
     if (peakMin != null && peakMax != null) {
-      if (showStereoWaves) {
-        // 2 волны (L сверху, R снизу)
+      if (stereoView) {
         float halfH = waveH * 0.25f - 2;
         int topCenter = waveTop + waveH / 4;
         int botCenter = waveTop + 3 * waveH / 4;
@@ -684,21 +715,21 @@ public class WaveformView extends View {
         wavePath.close();
         canvas.drawPath(wavePath, pWave);
 
-        // Линия по центру (между каналами)
-        canvas.drawLine(0, waveTop + waveH / 2f, w, waveTop + waveH / 2f, pCenter);
+        canvas.drawLine(0, centerY, w, centerY, pCenter);
       } else {
-        // 1 волна (моно/среднее)
         float halfH = waveH * 0.5f - 2;
         wavePath.reset();
         for (int x = 0; x < w; x++) {
-          float y = centerY - peakMax[x] * halfH;
+          float max = Math.max(peakMax[x], peakMaxR[x]);
+          float y = centerY - max * halfH;
           if (x == 0)
             wavePath.moveTo(x, y);
           else
             wavePath.lineTo(x, y);
         }
         for (int x = w - 1; x >= 0; x--) {
-          float y = centerY - peakMin[x] * halfH;
+          float min = Math.min(peakMin[x], peakMinR[x]);
+          float y = centerY - min * halfH;
           wavePath.lineTo(x, y);
         }
         wavePath.close();
@@ -707,26 +738,22 @@ public class WaveformView extends View {
       }
     }
 
-    // рамка выделения
     if (hasSelection()) {
       float sx0 = frameToX(selStart);
       float sx1 = frameToX(selEnd);
       canvas.drawLine(sx0, waveTop, sx0, waveBottom, pSelBorder);
       canvas.drawLine(sx1, waveTop, sx1, waveBottom, pSelBorder);
-      // ручки
       drawHandle(canvas, sx0, waveTop, waveBottom);
       drawHandle(canvas, sx1, waveTop, waveBottom);
     }
 
-    // маркеры
     if (markers != null) {
       for (int m : markers) {
         float x = frameToX(m);
         if (x < -markerFlagW || x > w + markerFlagW)
           continue;
-        // линия
         canvas.drawLine(x, waveTop, x, waveBottom, pMarker);
-        // ярлычок сверху — флажок вправо от линии
+
         float topY = waveTop + 2;
         Path flag = new Path();
         flag.moveTo(x, topY);
@@ -735,7 +762,7 @@ public class WaveformView extends View {
         flag.lineTo(x, topY + markerFlagH);
         flag.close();
         canvas.drawPath(flag, pMarkerFill);
-        // ярлычок снизу — флажок вправо
+
         float botY = waveBottom - markerFlagH - 2;
         Path flag2 = new Path();
         flag2.moveTo(x, botY);
@@ -747,31 +774,49 @@ public class WaveformView extends View {
       }
     }
 
-    // playhead
-    // Красная линия (старт/курсор)
     float px = frameToX(playheadFrame);
     if (px >= 0 && px <= w) {
       canvas.drawLine(px, waveTop, px, waveBottom, pPlayhead);
-      canvas.drawRect(px - 5, waveTop, px + 5, waveTop + 8, pPlayhead); // треугольник
+      canvas.drawRect(px - 5, waveTop, px + 5, waveTop + 8, pPlayhead);
     }
 
-    // Зелёная линия (текущее воспроизведение)
     float activePx = frameToX(activePlayFrame);
     if (activePx >= 0 && activePx <= w && activePlayFrame != playheadFrame) {
-      Paint pActive = new Paint();
-      pActive.setColor(0xFF4CAF50); // Зелёный цвет
-      pActive.setStrokeWidth(3f * getResources().getDisplayMetrics().density);
-      canvas.drawLine(activePx, waveTop, activePx, waveBottom, pActive);
+      canvas.drawLine(activePx, waveTop, activePx, waveBottom, pActivePlayhead);
     }
 
-    // центральная линия
-    canvas.drawLine(0, centerY, w, centerY, pCenter);
+    if (stereoView) {
+      checkLx = 10;
+      checkLy = waveTop + 10;
+      drawCheckbox(canvas, checkLx, checkLy, channelL);
+      // Текст "L" рядом с галкой
+      canvas.drawText("L", checkLx + checkSize + 6, checkLy + checkSize - 6, pChannelText);
+
+      checkRx = 10;
+      checkRy = waveTop + waveH / 2 + 10;
+      drawCheckbox(canvas, checkRx, checkRy, channelR);
+      // Текст "R" рядом с галкой
+      canvas.drawText("R", checkRx + checkSize + 6, checkRy + checkSize - 6, pChannelText);
+    }
+  }
+
+  private void drawCheckbox(Canvas c, float x, float y, boolean checked) {
+    c.drawRect(x, y, x + checkSize, y + checkSize, pCheckBg);
+    Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+    p.setStyle(Paint.Style.STROKE);
+    p.setStrokeWidth(2f);
+    p.setColor(colorCheck);
+    c.drawRect(x, y, x + checkSize, y + checkSize, p);
+
+    if (checked) {
+      p.setStyle(Paint.Style.FILL);
+      c.drawRect(x + 5, y + 5, x + checkSize - 5, y + checkSize - 5, p);
+    }
   }
 
   private void drawRuler(Canvas canvas, int w, int rulerH) {
     if (sampleRate <= 0)
       return;
-    // выбираем шаг: 10мс, 50мс, 100мс, 500мс, 1с, 5с...
     double[] steps = { 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0 };
     double visibleSec = w * viewFramesPerPixel / sampleRate;
     double step = steps[steps.length - 1];
@@ -790,7 +835,6 @@ public class WaveformView extends View {
       if (x < 0 || x > w)
         continue;
       canvas.drawLine(x, rulerH - 6, x, rulerH, pGrid);
-
       String label;
       if (step < 1.0) {
         label = String.format(java.util.Locale.US, "%.0fms", t * 1000);
@@ -802,8 +846,7 @@ public class WaveformView extends View {
     }
   }
 
-  private void drawGrid(Canvas canvas, int w, int top, int bottom, int centerY) {
-    // вертикальные линии по тем же шагам, что и линейка
+  private void drawGrid(Canvas canvas, int w, int top, int bottom) {
     if (sampleRate <= 0)
       return;
     double[] steps = { 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0 };
@@ -828,64 +871,10 @@ public class WaveformView extends View {
   }
 
   private void drawHandle(Canvas canvas, float x, int top, int bottom) {
-    // кружки сверху и снизу
     float cyTop = top + handleHalfPx;
     float cyBot = bottom - handleHalfPx;
     canvas.drawCircle(x, cyTop, handleHalfPx, pSelBorder);
     canvas.drawCircle(x, cyBot, handleHalfPx, pSelBorder);
-    // вертикальная линия между ними
     canvas.drawLine(x, cyTop, x, cyBot, pSelBorder);
   }
-
-  /** Программный зум вокруг центра вьюхи. factor > 1 — приблизить, < 1 — отдалить. */
-  public void zoomInAroundCenter(double factor) {
-    if (totalFrames == 0)
-      return;
-    double oldFpp = viewFramesPerPixel;
-    double newFpp = oldFpp / factor;
-    double minFpp = 1.0 / 8.0;
-    double maxFpp = Math.max(1, totalFrames);
-    if (newFpp < minFpp)
-      newFpp = minFpp;
-    if (newFpp > maxFpp)
-      newFpp = maxFpp;
-    float cx = getWidth() / 2f;
-    double focusFrame = viewStartFrame + cx * oldFpp;
-    viewStartFrame = focusFrame - cx * newFpp;
-    viewFramesPerPixel = newFpp;
-    clampView();
-    invalidatePeakCache();
-    invalidate();
-  }
-
-  /** Обновить маркеры без сброса зума/скролла. */
-  public void updateMarkers(java.util.List<Integer> newMarkers) {
-    this.markers = newMarkers;
-    invalidate();
-  }
-
-  public void setActivePlayheadFrame(int f) {
-    activePlayFrame = Math.max(0, Math.min(totalFrames, f));
-    invalidate();
-  }
-
-  public void snapActivePlayheadFrame(int f) {
-    activePlayFrame = Math.max(0, Math.min(totalFrames, f));
-    invalidate();
-  }
-
-  public int getPlayheadFrame() {
-    return playheadFrame;
-  }
-
-  public int getActivePlayFrame() {
-    return activePlayFrame;
-  }
-
-  public void setShowStereoWaves(boolean show) {
-    this.showStereoWaves = show;
-    invalidatePeakCache(); // Пересчитать пики
-    invalidate();
-  }
-
 }

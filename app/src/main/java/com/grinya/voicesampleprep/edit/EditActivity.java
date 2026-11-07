@@ -1,31 +1,23 @@
 package com.grinya.voicesampleprep.edit;
 
-import com.grinya.voicesampleprep.ExportActivity;
-import android.app.Activity;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
-import android.view.View;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
-
-import android.net.Uri;
-import com.grinya.voicesampleprep.audio.AudioDecoder;
-
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-
+import com.grinya.voicesampleprep.ExportActivity;
 import com.grinya.voicesampleprep.R;
+import com.grinya.voicesampleprep.SettingsActivity;
+import com.grinya.voicesampleprep.audio.AudioDecoder;
 import com.grinya.voicesampleprep.audio.AudioPlayer;
 import com.grinya.voicesampleprep.model.AudioClip;
-
-import java.util.Locale;
 import com.grinya.voicesampleprep.model.MarkerStore;
-
-import com.grinya.voicesampleprep.SettingsActivity;
+import java.util.Locale;
 
 public class EditActivity extends AppCompatActivity
     implements AudioPlayer.Listener, WaveformView.Listener {
@@ -42,6 +34,10 @@ public class EditActivity extends AppCompatActivity
   private boolean isChanged = false;
 
   private static final int REQ_INSERT = 5001;
+
+  private boolean isStereoMode = false;
+  private boolean isLeftEnabled = true;
+  private boolean isRightEnabled = true;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -60,14 +56,16 @@ public class EditActivity extends AppCompatActivity
     Object o = getIntent().getSerializableExtra(EXTRA_CLIP);
     // AudioClip не Serializable — передаём через singleton-holder
     clip = EditActivityHolder.current;
-    // Загружаем метки с диска
-    if (clip.dir != null) {
-      clip.markers.clear();
-      clip.markers.addAll(MarkerStore.load(clip.dir));
-    }
+
     if (clip == null) {
       finish();
       return;
+    }
+
+    // Загружаем метки с диска (только если clip не null)
+    if (clip.dir != null) {
+      clip.markers.clear();
+      clip.markers.addAll(MarkerStore.load(clip.dir));
     }
 
     wave = findViewById(R.id.wave);
@@ -86,10 +84,15 @@ public class EditActivity extends AppCompatActivity
     wave.setListener(this);
     wave.setData(clip.pcm, clip.sampleRate, clip.markers);
 
+    // android.content.SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS,MODE_PRIVATE);
+    // boolean showStereo = prefs.getBoolean(SettingsActivity.KEY_STEREO_WAVES, false);
+    // wave.setStereoView(showStereo);
+
     android.content.SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS,
         MODE_PRIVATE);
-    boolean showStereo = prefs.getBoolean(SettingsActivity.KEY_STEREO_WAVES, false);
-    wave.setShowStereoWaves(showStereo);
+    isStereoMode = prefs.getBoolean(SettingsActivity.KEY_STEREO_WAVES, false);
+    wave.setStereoView(isStereoMode);
+    player.setChannelMask(isLeftEnabled, isRightEnabled);
 
     wireToolbar();
     wireTransport();
@@ -210,7 +213,7 @@ public class EditActivity extends AppCompatActivity
     findViewById(R.id.btnSilence).setOnClickListener(v -> {
       if (!requireSelection())
         return;
-      clip.silence(wave.getSelStart(), wave.getSelEnd());
+      clip.silence(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
       refreshAfterChange();
     });
     findViewById(R.id.btnGain).setOnClickListener(v -> showGainDialog());
@@ -218,7 +221,19 @@ public class EditActivity extends AppCompatActivity
     findViewById(R.id.btnFadeIn).setOnClickListener(v -> showFadeDialog(true));
     findViewById(R.id.btnFadeOut).setOnClickListener(v -> showFadeDialog(false));
     findViewById(R.id.btnReverse).setOnClickListener(v -> {
-      clip.reverse();
+      if (wave.hasSelection()) {
+        clip.reverseRange(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
+      } else {
+        clip.reverse(applyL(), applyR());
+      }
+      refreshAfterChange();
+    });
+    findViewById(R.id.btnInvert).setOnClickListener(v -> {
+      if (!wave.hasSelection()) {
+        Toast.makeText(this, "Выделите фрагмент", Toast.LENGTH_SHORT).show();
+        return;
+      }
+      clip.invertPhaseRange(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
       refreshAfterChange();
     });
     findViewById(R.id.btnMarker).setOnClickListener(v -> {
@@ -256,9 +271,10 @@ public class EditActivity extends AppCompatActivity
             return;
           }
           if (wave.hasSelection()) {
-            clip.gainRange(wave.getSelStart(), wave.getSelEnd(), dB);
+            clip.gainRange(wave.getSelStart(), wave.getSelEnd(), dB, applyL(), applyR());
           } else {
-            clip.gain(dB);
+            // Для всего файла используем тот же метод (от 0 до конца)
+            clip.gainRange(0, clip.frameCount(), dB, applyL(), applyR());
           }
           refreshAfterChange();
         }).setNegativeButton(R.string.cancel, null).show();
@@ -281,10 +297,12 @@ public class EditActivity extends AppCompatActivity
           }
           if (target <= 0f || target > 1f)
             target = 0.9f;
-          if (useSel)
-            clip.normalizeRangePeak(wave.getSelStart(), wave.getSelEnd(), target);
-          else
-            clip.normalizePeak(target);
+          if (useSel) {
+            clip.normalizeRangePeak(wave.getSelStart(), wave.getSelEnd(), target, applyL(),
+                applyR());
+          } else {
+            clip.normalizePeak(target, applyL(), applyR());
+          }
           refreshAfterChange();
         }).setNegativeButton(R.string.cancel, null).show();
   }
@@ -307,14 +325,14 @@ public class EditActivity extends AppCompatActivity
           int frames = Math.max(1, ms * clip.sampleRate / 1000);
           if (useSel) {
             if (fadeIn)
-              clip.fadeInRange(wave.getSelStart(), wave.getSelEnd(), frames);
+              clip.fadeInRange(wave.getSelStart(), wave.getSelEnd(), frames, applyL(), applyR());
             else
-              clip.fadeOutRange(wave.getSelStart(), wave.getSelEnd(), frames);
+              clip.fadeOutRange(wave.getSelStart(), wave.getSelEnd(), frames, applyL(), applyR());
           } else {
             if (fadeIn)
-              clip.fadeIn(frames);
+              clip.fadeIn(frames, applyL(), applyR());
             else
-              clip.fadeOut(frames);
+              clip.fadeOut(frames, applyL(), applyR());
           }
           refreshAfterChange();
         }).setNegativeButton(R.string.cancel, null).show();
@@ -358,6 +376,14 @@ public class EditActivity extends AppCompatActivity
     int s = (ms % 60000) / 1000;
     int r = ms % 1000;
     return String.format(Locale.US, "%02d:%02d.%03d", m, s, r);
+  }
+
+  private boolean applyL() {
+    return !isStereoMode || isLeftEnabled;
+  }
+
+  private boolean applyR() {
+    return !isStereoMode || isRightEnabled;
   }
 
   // ---------- AudioPlayer.Listener ----------
@@ -552,6 +578,18 @@ public class EditActivity extends AppCompatActivity
     // времянка удалить
     android.util.Log.d("EXIT", "onBackPressed, isChanged=" + isChanged);
     confirmExit();
+  }
+
+  @Override
+  public void onChannelToggled(boolean left, boolean right) {
+    isLeftEnabled = left;
+    isRightEnabled = right;
+    player.setChannelMask(left, right);
+    if (player.isPlaying()) {
+      player.pause();
+      btnPlay.setEnabled(true);
+      btnPause.setEnabled(false);
+    }
   }
 
 }

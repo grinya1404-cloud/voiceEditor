@@ -23,7 +23,8 @@
     <string name="cancel">Cancel</string>
     <string name="ok">OK</string>
     <string name="export">Export</string>
-
+    <string name="invert">Invert</string>
+    
     <!-- dialogs -->
     <string name="gain_dialog_title">Gain (dB)</string>
     <string name="normalize_dialog_title">Normalize peak (0..1)</string>

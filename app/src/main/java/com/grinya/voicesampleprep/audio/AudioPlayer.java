@@ -43,6 +43,9 @@ public class AudioPlayer {
   private boolean hasValidTimestamp = false;
   private int streamStartFrame = 0;
 
+  private boolean playLeft = true;
+  private boolean playRight = true;
+
   public AudioPlayer() {
     positionTick = new Runnable() {
       @Override
@@ -88,6 +91,11 @@ public class AudioPlayer {
     this.totalFrames = (pcm == null) ? 0 : pcm.length / CHANNELS;
     this.currentFrame = 0;
     this.endFrame = totalFrames;
+  }
+
+  public void setChannelMask(boolean left, boolean right) {
+    this.playLeft = left;
+    this.playRight = right;
   }
 
   public void setPlayRange(int startFrame, int endFrame) {
@@ -146,6 +154,14 @@ public class AudioPlayer {
         int numFrames = framesToPlay;
         float[] data = new float[numFrames * CHANNELS];
         System.arraycopy(pcm, playStartFrame * CHANNELS, data, 0, numFrames * CHANNELS);
+
+        // Глушим каналы
+        for (int i = 0; i < data.length; i += 2) {
+          if (!playLeft)
+            data[i] = 0;
+          if (!playRight)
+            data[i + 1] = 0;
+        }
 
         t = new AudioTrack.Builder()
             .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
@@ -247,7 +263,14 @@ public class AudioPlayer {
           int n = Math.min(chunk, endFrame - frame);
           float[] block = new float[n * CHANNELS];
           System.arraycopy(pcm, frame * CHANNELS, block, 0, n * CHANNELS);
-
+          
+          // Глушим каналы
+          for (int i = 0; i < block.length; i += 2) {
+            if (!playLeft)
+              block[i] = 0;
+            if (!playRight)
+              block[i + 1] = 0;
+          }
           int written = 0;
           int totalToWrite = block.length;
           while (written < totalToWrite && playing) {
