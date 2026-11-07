@@ -1,5 +1,5 @@
 package com.grinya.voicesampleprep;
-
+// +инсерт 
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.InputType;
