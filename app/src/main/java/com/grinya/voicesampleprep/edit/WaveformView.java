@@ -149,6 +149,9 @@ public class WaveformView extends View {
   // Пересчитывается при изменении зума/скролла.
   private float[] peakMin;
   private float[] peakMax;
+  private boolean showStereoWaves = false;
+  private float[] peakMinR;
+  private float[] peakMaxR;
   private int peakCacheWidth = 0;
   private double peakCacheStart = 0;
   private double peakCacheFpp = 0;
@@ -539,10 +542,14 @@ public class WaveformView extends View {
       peakCacheFpp = viewFramesPerPixel;
       return;
     }
-    peakMin = new float[width];
-    peakMax = new float[width];
+
     double start = viewStartFrame;
     double fpp = viewFramesPerPixel;
+
+    peakMin = new float[width];
+    peakMax = new float[width];
+    peakMinR = new float[width];
+    peakMaxR = new float[width];
 
     for (int x = 0; x < width; x++) {
       int f0 = (int) Math.floor(start + x * fpp);
@@ -554,35 +561,42 @@ public class WaveformView extends View {
       if (f1 > totalFrames)
         f1 = totalFrames;
 
-      float min = 0f, max = 0f;
-      // если фреймов на пиксель мало — смотрим каждый
-      if (f1 - f0 <= 64) {
+      float minL = 0f, maxL = 0f;
+      float minR = 0f, maxR = 0f;
+      int step = Math.max(1, (f1 - f0) / 64);
+
+      for (int f = f0; f < f1; f += step) {
+        float l = pcm[f * 2];
+        float r = pcm[f * 2 + 1];
+        if (l < minL)
+          minL = l;
+        if (l > maxL)
+          maxL = l;
+        if (r < minR)
+          minR = r;
+        if (r > maxR)
+          maxR = r;
+      }
+      // Обрабатываем случай f1-f0 < 64 (последний пиксель)
+      if (step > 1 && f0 + step < f1) {
         for (int f = f0; f < f1; f++) {
           float l = pcm[f * 2];
           float r = pcm[f * 2 + 1];
-          float m = (l + r) * 0.5f;
-          if (m < min)
-            min = m;
-          if (m > max)
-            max = m;
-        }
-      } else {
-        // сэмплируем до 64 точек на пиксель
-        int step = (f1 - f0) / 64;
-        if (step < 1)
-          step = 1;
-        for (int f = f0; f < f1; f += step) {
-          float l = pcm[f * 2];
-          float r = pcm[f * 2 + 1];
-          float m = (l + r) * 0.5f;
-          if (m < min)
-            min = m;
-          if (m > max)
-            max = m;
+          if (l < minL)
+            minL = l;
+          if (l > maxL)
+            maxL = l;
+          if (r < minR)
+            minR = r;
+          if (r > maxR)
+            maxR = r;
         }
       }
-      peakMin[x] = min;
-      peakMax[x] = max;
+
+      peakMin[x] = minL;
+      peakMax[x] = maxL;
+      peakMinR[x] = minR;
+      peakMaxR[x] = maxR;
     }
     peakCacheWidth = width;
     peakCacheStart = start;
@@ -632,25 +646,65 @@ public class WaveformView extends View {
       canvas.drawRect(sx0, waveTop, sx1, waveBottom, pSel);
     }
 
-    // волна (по каналам — среднее)
+    // волна
     if (peakMin != null && peakMax != null) {
-      float halfH = waveH * 0.5f - 2;
-      wavePath.reset();
-      // верхняя огибающая
-      for (int x = 0; x < w; x++) {
-        float y = centerY - peakMax[x] * halfH;
-        if (x == 0)
-          wavePath.moveTo(x, y);
-        else
+      if (showStereoWaves) {
+        // 2 волны (L сверху, R снизу)
+        float halfH = waveH * 0.25f - 2;
+        int topCenter = waveTop + waveH / 4;
+        int botCenter = waveTop + 3 * waveH / 4;
+
+        wavePath.reset();
+        for (int x = 0; x < w; x++) {
+          float y = topCenter - peakMax[x] * halfH;
+          if (x == 0)
+            wavePath.moveTo(x, y);
+          else
+            wavePath.lineTo(x, y);
+        }
+        for (int x = w - 1; x >= 0; x--) {
+          float y = topCenter - peakMin[x] * halfH;
           wavePath.lineTo(x, y);
+        }
+        wavePath.close();
+        canvas.drawPath(wavePath, pWave);
+
+        wavePath.reset();
+        for (int x = 0; x < w; x++) {
+          float y = botCenter - peakMaxR[x] * halfH;
+          if (x == 0)
+            wavePath.moveTo(x, y);
+          else
+            wavePath.lineTo(x, y);
+        }
+        for (int x = w - 1; x >= 0; x--) {
+          float y = botCenter - peakMinR[x] * halfH;
+          wavePath.lineTo(x, y);
+        }
+        wavePath.close();
+        canvas.drawPath(wavePath, pWave);
+
+        // Линия по центру (между каналами)
+        canvas.drawLine(0, waveTop + waveH / 2f, w, waveTop + waveH / 2f, pCenter);
+      } else {
+        // 1 волна (моно/среднее)
+        float halfH = waveH * 0.5f - 2;
+        wavePath.reset();
+        for (int x = 0; x < w; x++) {
+          float y = centerY - peakMax[x] * halfH;
+          if (x == 0)
+            wavePath.moveTo(x, y);
+          else
+            wavePath.lineTo(x, y);
+        }
+        for (int x = w - 1; x >= 0; x--) {
+          float y = centerY - peakMin[x] * halfH;
+          wavePath.lineTo(x, y);
+        }
+        wavePath.close();
+        canvas.drawPath(wavePath, pWave);
+        canvas.drawLine(0, centerY, w, centerY, pCenter);
       }
-      // нижняя огибающая в обратном порядке
-      for (int x = w - 1; x >= 0; x--) {
-        float y = centerY - peakMin[x] * halfH;
-        wavePath.lineTo(x, y);
-      }
-      wavePath.close();
-      canvas.drawPath(wavePath, pWave);
     }
 
     // рамка выделения
@@ -826,6 +880,12 @@ public class WaveformView extends View {
 
   public int getActivePlayFrame() {
     return activePlayFrame;
+  }
+
+  public void setShowStereoWaves(boolean show) {
+    this.showStereoWaves = show;
+    invalidatePeakCache(); // Пересчитать пики
+    invalidate();
   }
 
 }

@@ -25,6 +25,8 @@ import com.grinya.voicesampleprep.model.AudioClip;
 import java.util.Locale;
 import com.grinya.voicesampleprep.model.MarkerStore;
 
+import com.grinya.voicesampleprep.SettingsActivity;
+
 public class EditActivity extends AppCompatActivity
     implements AudioPlayer.Listener, WaveformView.Listener {
 
@@ -83,6 +85,11 @@ public class EditActivity extends AppCompatActivity
 
     wave.setListener(this);
     wave.setData(clip.pcm, clip.sampleRate, clip.markers);
+
+    android.content.SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS,
+        MODE_PRIVATE);
+    boolean showStereo = prefs.getBoolean(SettingsActivity.KEY_STEREO_WAVES, false);
+    wave.setShowStereoWaves(showStereo);
 
     wireToolbar();
     wireTransport();
@@ -167,6 +174,13 @@ public class EditActivity extends AppCompatActivity
       updateTimeLabel();
       btnPlay.setEnabled(true);
       btnPause.setEnabled(false);
+    });
+
+    findViewById(R.id.btnZoomIn).setOnClickListener(v -> {
+      wave.zoomInAroundCenter(2.0);
+    });
+    findViewById(R.id.btnZoomOut).setOnClickListener(v -> {
+      wave.zoomInAroundCenter(0.5);
     });
   }
 
