@@ -38,18 +38,39 @@ public class AudioPlayer {
   private long playStartTimeMs = 0;
   private int playStartFrame = 0;
 
+  private long lastTimestampNanos = 0;
+  private long lastTimestampFrame = 0;
+  private boolean hasValidTimestamp = false;
+  private int streamStartFrame = 0;
+
   public AudioPlayer() {
     positionTick = new Runnable() {
       @Override
       public void run() {
         if (listener != null && playing) {
-          // Позицию рассчитываем по времени, чтобы линия ехала плавно (60 fps)
-          int elapsedMs = (int) (System.currentTimeMillis() - playStartTimeMs);
-          int frame = playStartFrame + (elapsedMs * RATE / 1000);
-          if (frame > endFrame)
-            frame = endFrame;
-          currentFrame = frame;
+          int frameToReport;
 
+          if (hasValidTimestamp) {
+            // Время, прошедшее с последнего замера
+            long now = System.nanoTime();
+            long elapsedNanos = now - lastTimestampNanos;
+            long framesAdvanced = (elapsedNanos * RATE) / 1_000_000_000L;
+
+            // Прибавляем позицию AudioTrack к тому месту, откуда мы начали играть
+            long totalFrames = lastTimestampFrame + framesAdvanced;
+            frameToReport = streamStartFrame + (int) totalFrames;
+          } else {
+            // Если таймстамп ещё не получен (или не поддерживается) — используем старый способ
+            int elapsedMs = (int) (System.currentTimeMillis() - playStartTimeMs);
+            frameToReport = playStartFrame + (elapsedMs * RATE / 1000);
+          }
+
+          if (frameToReport > endFrame)
+            frameToReport = endFrame;
+          if (frameToReport < 0)
+            frameToReport = 0;
+
+          currentFrame = frameToReport;
           listener.onPosition(currentFrame * 1000 / RATE);
           ui.postDelayed(this, 16);
         }
@@ -107,102 +128,161 @@ public class AudioPlayer {
       return;
 
     if (currentFrame >= endFrame)
-      currentFrame = 0; // Если в конце — начинаем сначала
+      currentFrame = 0;
     playStartFrame = currentFrame;
+    streamStartFrame = currentFrame;
     playStartTimeMs = System.currentTimeMillis();
     playing = true;
 
+    // Определяем длину в секундах
+    int framesToPlay = endFrame - playStartFrame;
+    double durationSec = (double) framesToPlay / RATE;
+
     playerThread = new Thread(() -> {
-      // Буфер делаем небольшим (~85 мс). Это даст минимальную задержку при остановке.
-      int minBuf = AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_STEREO,
-          AudioFormat.ENCODING_PCM_FLOAT);
-      int bufSize = Math.max(minBuf, 65536);
+      AudioTrack t;
 
-      AudioTrack t = new AudioTrack.Builder()
-          .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
-              .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-          .setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
-              .setSampleRate(RATE).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
-          .setBufferSizeInBytes(bufSize * 4).setTransferMode(AudioTrack.MODE_STREAM).build();
+      if (durationSec < 10.0) {
+        // --- КОРОТКИЙ ФАЙЛ: MODE_STATIC (весь звук в память) ---
+        int numFrames = framesToPlay;
+        float[] data = new float[numFrames * CHANNELS];
+        System.arraycopy(pcm, playStartFrame * CHANNELS, data, 0, numFrames * CHANNELS);
 
-      track = t;
-      t.play();
+        t = new AudioTrack.Builder()
+            .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+            .setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
+                .setSampleRate(RATE).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
+            .setBufferSizeInBytes(numFrames * CHANNELS * 4).setTransferMode(AudioTrack.MODE_STATIC)
+            .build();
 
-      int chunk = bufSize / 2; // Количество фреймов за один блок
-      int frame = playStartFrame;
+        track = t;
+        java.nio.ByteBuffer bb = java.nio.ByteBuffer.allocateDirect(data.length * 4);
+        bb.order(java.nio.ByteOrder.nativeOrder());
+        bb.asFloatBuffer().put(data);
+        t.write(bb, data.length * 4, AudioTrack.WRITE_BLOCKING);
+        t.play();
 
-      try {
+        // Ждем окончания или паузы
+        while (playing) {
+          try {
+            Thread.sleep(20);
+          } catch (InterruptedException ignored) {
+          }
+          // Если трек закончил играть сам — выходим
+          if (t.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) {
+            break;
+          }
+        }
+
+        playing = false;
+        try {
+          t.stop();
+        } catch (Exception ignored) {
+        }
+        try {
+          t.release();
+        } catch (Exception ignored) {
+        }
+        if (track == t)
+          track = null;
+
+        // Финалим currentFrame
+        currentFrame = endFrame;
+        ui.post(() -> {
+          if (listener != null) {
+            listener.onStateChanged(false);
+            listener.onPosition(currentFrame * 1000 / RATE);
+            if (currentFrame >= endFrame)
+              listener.onEnded();
+          }
+        });
+
+      } else {
+        // --- ДЛИННЫЙ ФАЙЛ: MODE_STREAM (как раньше) ---
+        int minBuf = AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_STEREO,
+            AudioFormat.ENCODING_PCM_FLOAT);
+        int bufSize = Math.max(minBuf, 65536);
+
+        t = new AudioTrack.Builder()
+            .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+            .setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
+                .setSampleRate(RATE).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
+            .setBufferSizeInBytes(bufSize).setTransferMode(AudioTrack.MODE_STREAM).build();
+
+        track = t;
+        t.play();
+
+        // Поток для таймстампов
+        Thread syncThread = new Thread(() -> {
+          android.media.AudioTimestamp ts = new android.media.AudioTimestamp();
+          while (playing) {
+            if (t.getTimestamp(ts)) {
+              lastTimestampNanos = ts.nanoTime;
+              lastTimestampFrame = ts.framePosition;
+              hasValidTimestamp = true;
+            }
+            try {
+              Thread.sleep(100);
+            } catch (InterruptedException ignored) {
+            }
+          }
+        }, "AudioSync");
+        syncThread.start();
+
+        int chunk = bufSize / 4 / CHANNELS; // в фреймах
+        if (chunk <= 0)
+          chunk = 1024;
+        int frame = playStartFrame;
+
         while (frame < endFrame && playing) {
           int n = Math.min(chunk, endFrame - frame);
           float[] block = new float[n * CHANNELS];
           System.arraycopy(pcm, frame * CHANNELS, block, 0, n * CHANNELS);
 
           int written = 0;
-          while (written < block.length && playing) {
-            int w = t.write(block, written, block.length - written, AudioTrack.WRITE_BLOCKING);
+          int totalToWrite = block.length;
+          while (written < totalToWrite && playing) {
+            int w = t.write(block, written, totalToWrite - written, AudioTrack.WRITE_BLOCKING);
             if (w < 0) {
-              // Фатальная ошибка записи (трек умер)
-              android.util.Log.e("PLAYER", "write error: " + w);
+              android.util.Log.e("PLAYER", "write error=" + w);
               break;
             }
             written += w;
           }
           frame += n;
-          // Дописываем 200 мс тишины, чтобы Bluetooth/наушники гарантированно
-          // воспроизвели последние фреймы перед закрытием AudioTrack
-          if (playing) {
-            int silenceFrames = RATE / 5; // 200 мс
-            float[] silence = new float[silenceFrames * CHANNELS];
-            int silenceWritten = 0; // ← переименовали written в silenceWritten
-            while (silenceWritten < silence.length && playing) {
-              int w = t.write(silence, silenceWritten, silence.length - silenceWritten,
-                  AudioTrack.WRITE_BLOCKING);
-              if (w < 0)
-                break;
-              silenceWritten += w;
-            }
-          }
         }
-      } catch (Exception ignored) {
-      } finally {
-        playing = false;
 
-        if (t.getState() == AudioTrack.STATE_INITIALIZED) {
-          // времянка кдалить
-          android.util.Log.d("PLAYER", "Playback finished. Total frames sent: " + frame);
-          try {
-            // Даем AudioTrack 250 мс, чтобы он выплюнул остатки буфера в динамик
-            Thread.sleep(100);
-          } catch (InterruptedException ignored) {
-          }
-          try {
-            t.stop();
-          } catch (Exception ignored) {
-          }
-          try {
-            t.release();
-          } catch (Exception ignored) {
-          }
+        playing = false;
+        hasValidTimestamp = false;
+        try {
+          Thread.sleep(100);
+        } catch (InterruptedException ignored) {
+        }
+        try {
+          t.stop();
+        } catch (Exception ignored) {
+        }
+        try {
+          t.release();
+        } catch (Exception ignored) {
         }
         if (track == t)
           track = null;
 
         currentFrame = Math.min(currentFrame, endFrame);
-
         ui.post(() -> {
           if (listener != null) {
             listener.onStateChanged(false);
             listener.onPosition(currentFrame * 1000 / RATE);
-            // Если доиграли до конца, шлем onEnded
-            if (currentFrame >= endFrame && endFrame > 0) {
+            if (currentFrame >= endFrame)
               listener.onEnded();
-            }
           }
         });
       }
     }, "AudioPlayer");
-    playerThread.start();
 
+    playerThread.start();
     ui.post(positionTick);
     if (listener != null)
       listener.onStateChanged(true);

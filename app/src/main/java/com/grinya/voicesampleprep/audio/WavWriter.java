@@ -70,7 +70,7 @@ public final class WavWriter {
                 }
                 if (bi > 0) out.write(buf, 0, bi);
             } else { // 24
-                byte[] buf = new byte[8192];
+                byte[] buf = new byte[8190];
                 int bi = 0;
                 for (float v : data) {
                     int s = Math.round(v * 8388607f);
