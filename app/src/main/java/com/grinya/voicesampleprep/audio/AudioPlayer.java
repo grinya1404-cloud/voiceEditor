@@ -45,6 +45,7 @@ public class AudioPlayer {
 
   private boolean playLeft = true;
   private boolean playRight = true;
+  private int playGeneration = 0;
 
   public AudioPlayer() {
     positionTick = new Runnable() {
@@ -121,28 +122,49 @@ public class AudioPlayer {
   }
 
   public void seekToFrame(int frame) {
+    android.util.Log.d("PLAYER", "seekToFrame(" + frame + ") called. wasPlaying=" + playing
+        + " currentFrame=" + currentFrame);
     boolean wasPlaying = playing;
     pause();
     currentFrame = Math.max(0, Math.min(endFrame, frame));
+    playStartFrame = currentFrame; // ← важно!
+    playStartTimeMs = System.currentTimeMillis();
     notifyPosition();
     if (wasPlaying)
       play();
   }
 
   public void play() {
+    android.util.Log.d("PLAYER", "play() called. currentFrame=" + currentFrame + " endFrame="
+        + endFrame + " totalFrames=" + totalFrames);
+
     if (pcm == null || totalFrames == 0)
       return;
     if (playing)
       return;
 
-    if (currentFrame >= endFrame)
+    // Ждем завершения предыдущего потока
+    if (playerThread != null && playerThread.isAlive()) {
+      try {
+        playerThread.join(500);
+      } catch (InterruptedException ignored) {
+      }
+    }
+
+    // Увеличиваем поколение ТОЛЬКО когда точно стартуем
+    final int myGeneration = ++playGeneration;
+
+    // Корректируем позицию
+    if (currentFrame >= totalFrames)
       currentFrame = 0;
+    if (endFrame > 0 && currentFrame >= endFrame)
+      currentFrame = playStartFrame;
+
     playStartFrame = currentFrame;
     streamStartFrame = currentFrame;
     playStartTimeMs = System.currentTimeMillis();
     playing = true;
 
-    // Определяем длину в секундах
     int framesToPlay = endFrame - playStartFrame;
     double durationSec = (double) framesToPlay / RATE;
 
@@ -150,12 +172,11 @@ public class AudioPlayer {
       AudioTrack t;
 
       if (durationSec < 10.0) {
-        // --- КОРОТКИЙ ФАЙЛ: MODE_STATIC (весь звук в память) ---
+        // --- КОРОТКИЙ ФАЙЛ ---
         int numFrames = framesToPlay;
         float[] data = new float[numFrames * CHANNELS];
         System.arraycopy(pcm, playStartFrame * CHANNELS, data, 0, numFrames * CHANNELS);
 
-        // Глушим каналы
         for (int i = 0; i < data.length; i += 2) {
           if (!playLeft)
             data[i] = 0;
@@ -178,23 +199,19 @@ public class AudioPlayer {
         t.write(bb, data.length * 4, AudioTrack.WRITE_BLOCKING);
         t.play();
 
-        // Ждем окончания или паузы
         long startTime = System.currentTimeMillis();
         long durationMs = (long) (durationSec * 1000);
 
-        // Ждём окончания или паузы
-        while (playing) {
+        while (playing && myGeneration == playGeneration) {
           try {
             Thread.sleep(20);
           } catch (InterruptedException ignored) {
           }
           long elapsed = System.currentTimeMillis() - startTime;
-          if (elapsed >= durationMs) {
-            break; // Время вышло — считаем, что доиграли
-          }
+          if (elapsed >= durationMs)
+            break;
         }
 
-        playing = false;
         try {
           t.stop();
         } catch (Exception ignored) {
@@ -206,13 +223,16 @@ public class AudioPlayer {
         if (track == t)
           track = null;
 
-        // Финалим currentFrame
-        currentFrame = endFrame;
-        if (currentFrame < endFrame) {
-          currentFrame = endFrame; // Если доиграли до конца, ставим финальную позицию
+        // Финалим позицию только если мы еще актуальны
+        if (myGeneration == playGeneration) {
+          playing = false;
+          if (currentFrame < endFrame)
+            currentFrame = endFrame;
         }
-        playing = false;
+
         ui.post(() -> {
+          if (myGeneration != playGeneration)
+            return; // старый поток молчит
           if (listener != null) {
             listener.onStateChanged(false);
             listener.onPosition(currentFrame * 1000 / RATE);
@@ -222,7 +242,7 @@ public class AudioPlayer {
         });
 
       } else {
-        // --- ДЛИННЫЙ ФАЙЛ: MODE_STREAM (как раньше) ---
+        // --- ДЛИННЫЙ ФАЙЛ ---
         int minBuf = AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_STEREO,
             AudioFormat.ENCODING_PCM_FLOAT);
         int bufSize = Math.max(minBuf, 65536);
@@ -237,10 +257,9 @@ public class AudioPlayer {
         track = t;
         t.play();
 
-        // Поток для таймстампов
         Thread syncThread = new Thread(() -> {
           android.media.AudioTimestamp ts = new android.media.AudioTimestamp();
-          while (playing) {
+          while (playing && myGeneration == playGeneration) {
             if (t.getTimestamp(ts)) {
               lastTimestampNanos = ts.nanoTime;
               lastTimestampFrame = ts.framePosition;
@@ -254,17 +273,16 @@ public class AudioPlayer {
         }, "AudioSync");
         syncThread.start();
 
-        int chunk = bufSize / 4 / CHANNELS; // в фреймах
+        int chunk = bufSize / 4 / CHANNELS;
         if (chunk <= 0)
           chunk = 1024;
         int frame = playStartFrame;
 
-        while (frame < endFrame && playing) {
+        while (frame < endFrame && playing && myGeneration == playGeneration) {
           int n = Math.min(chunk, endFrame - frame);
           float[] block = new float[n * CHANNELS];
           System.arraycopy(pcm, frame * CHANNELS, block, 0, n * CHANNELS);
-          
-          // Глушим каналы
+
           for (int i = 0; i < block.length; i += 2) {
             if (!playLeft)
               block[i] = 0;
@@ -273,7 +291,7 @@ public class AudioPlayer {
           }
           int written = 0;
           int totalToWrite = block.length;
-          while (written < totalToWrite && playing) {
+          while (written < totalToWrite && playing && myGeneration == playGeneration) {
             int w = t.write(block, written, totalToWrite - written, AudioTrack.WRITE_BLOCKING);
             if (w < 0) {
               android.util.Log.e("PLAYER", "write error=" + w);
@@ -284,7 +302,6 @@ public class AudioPlayer {
           frame += n;
         }
 
-        playing = false;
         hasValidTimestamp = false;
         try {
           Thread.sleep(100);
@@ -301,8 +318,14 @@ public class AudioPlayer {
         if (track == t)
           track = null;
 
-        currentFrame = Math.min(currentFrame, endFrame);
+        if (myGeneration == playGeneration) {
+          playing = false;
+          currentFrame = Math.min(currentFrame, endFrame);
+        }
+
         ui.post(() -> {
+          if (myGeneration != playGeneration)
+            return;
           if (listener != null) {
             listener.onStateChanged(false);
             listener.onPosition(currentFrame * 1000 / RATE);
@@ -320,9 +343,12 @@ public class AudioPlayer {
   }
 
   public void pause() {
+    android.util.Log.d("PLAYER",
+        "pause() called. playing=" + playing + " currentFrame=" + currentFrame);
     if (!playing)
       return;
     playing = false;
+    playGeneration++;
     ui.removeCallbacks(positionTick);
 
     // Обновляем currentFrame точным значением на момент паузы

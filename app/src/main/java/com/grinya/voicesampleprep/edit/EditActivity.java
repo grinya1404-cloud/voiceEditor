@@ -436,7 +436,9 @@ public class EditActivity extends AppCompatActivity
     wave.setPlayheadFrame(frame);
     wave.snapActivePlayheadFrame(frame);
     updateTimeLabel();
-    // Выделение не трогаем
+    // Синхронизируем кнопки
+    btnPlay.setEnabled(!player.isPlaying());
+    btnPause.setEnabled(player.isPlaying());
   }
 
   @Override
