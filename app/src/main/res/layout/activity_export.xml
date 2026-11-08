@@ -139,12 +139,20 @@
                 android:checked="true" />
 
             <RadioButton
-                android:id="@+id/rbMono"
+                android:id="@+id/rbStereoMono"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:textColor="@color/onSurface"
-                android:text="Mono" />
+                android:text="Stereo\nMono" />
+
+            <RadioButton
+                android:id="@+id/rbTrueMono"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="@color/onSurface"
+                android:text="True\nMono" />
         </RadioGroup>
 
         <!-- Опции -->

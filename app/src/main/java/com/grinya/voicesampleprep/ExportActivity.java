@@ -22,6 +22,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import android.widget.RadioGroup;
 
 public class ExportActivity extends AppCompatActivity {
 
@@ -81,7 +82,11 @@ public class ExportActivity extends AppCompatActivity {
     boolean byMarkers = ((RadioButton) findViewById(R.id.rbByMarkers)).isChecked();
     int bits = ((RadioButton) findViewById(R.id.rb24)).isChecked() ? 24 : 16;
     int rate = ((RadioButton) findViewById(R.id.rb441)).isChecked() ? 44100 : 48000;
-    boolean mono = ((RadioButton) findViewById(R.id.rbMono)).isChecked();
+
+    // Читаем три варианта каналов
+    boolean isStereoMono = ((RadioButton) findViewById(R.id.rbStereoMono)).isChecked();
+    boolean isTrueMono = ((RadioButton) findViewById(R.id.rbTrueMono)).isChecked();
+
     boolean normalize = ((CheckBox) findViewById(R.id.cbNormalize)).isChecked();
     boolean fade = ((CheckBox) findViewById(R.id.cbFade)).isChecked();
     boolean trimSilence = ((CheckBox) findViewById(R.id.cbTrimSilence)).isChecked();
@@ -118,35 +123,40 @@ public class ExportActivity extends AppCompatActivity {
     final List<String> written = new ArrayList<>();
     final int[] failed = { 0 };
 
-    // Получаем папку один раз перед циклом
     androidx.documentfile.provider.DocumentFile dir = androidx.documentfile.provider.DocumentFile
         .fromTreeUri(this, treeUri);
+
+    // Финализируем переменные для захвата в поток
+    final int finalBits = bits;
+    final int finalRate = rate;
+    final boolean finalStereoMono = isStereoMono;
+    final boolean finalTrueMono = isTrueMono;
+    final boolean finalNormalize = normalize;
+    final boolean finalFade = fade;
+    final boolean finalTrimSilence = trimSilence;
 
     new Thread(() -> {
       for (int idx = 0; idx < ranges.size(); idx++) {
         int[] r = ranges.get(idx);
-        String fileName = ""; // Выносим наверх, чтобы catch видел
-
+        String fileName = "";
         try {
           float[] rangePcm = AudioOps.trim(source.pcm, r[0], r[1]);
 
-          if (trimSilence)
+          if (finalTrimSilence)
             rangePcm = trimSilence(rangePcm, 0.003f);
-          if (normalize)
+          if (finalNormalize)
             rangePcm = AudioOps.normalizePeak(rangePcm, 0.9f);
-          if (fade) {
+          if (finalFade) {
             int ff = source.sampleRate * 5 / 1000;
             rangePcm = AudioOps.fadeIn(rangePcm, ff, true, true);
             rangePcm = AudioOps.fadeOut(rangePcm, ff, true, true);
           }
 
-          // Формируем базовое имя без .wav
           String nameNoExt = buildName(nameTemplate, baseName, idx + 1);
           if (nameNoExt.toLowerCase().endsWith(".wav")) {
             nameNoExt = nameNoExt.substring(0, nameNoExt.length() - 4);
           }
 
-          // Ищем уникальное имя (name.wav, name_1.wav...)
           fileName = getUniqueName(dir, nameNoExt, ".wav");
 
           Uri fileUri = createFile(treeUri, fileName);
@@ -155,12 +165,22 @@ public class ExportActivity extends AppCompatActivity {
             continue;
           }
 
-          // WavWriter пишет в File — обходной путь
           java.io.File tmp = new java.io.File(getCacheDir(), "exp_tmp.wav");
-          android.util.Log.d("EXPORT", "Writing: bits=" + bits + " rate=" + rate + " mono=" + mono
-              + " pcm.length=" + rangePcm.length);
 
-          WavWriter.write(tmp, rangePcm, source.sampleRate, rate, bits, mono);
+          android.util.Log.d("EXPORT", "Writing: bits=" + finalBits + " rate=" + finalRate
+              + " stereoMono=" + finalStereoMono + " trueMono=" + finalTrueMono);
+          android.util.Log.d("EXPORT",
+              "rbStereoMono exists: " + (findViewById(R.id.rbStereoMono) != null));
+          android.util.Log.d("EXPORT",
+              "rbTrueMono exists: " + (findViewById(R.id.rbTrueMono) != null));
+          android.util.Log.d("EXPORT", "rbStereoMono checked: "
+              + ((RadioButton) findViewById(R.id.rbStereoMono)).isChecked());
+          android.util.Log.d("EXPORT",
+              "rbTrueMono checked: " + ((RadioButton) findViewById(R.id.rbTrueMono)).isChecked());
+          android.util.Log.d("EXPORT", "rgChannels checkedId: "
+              + ((RadioGroup) findViewById(R.id.rgChannels)).getCheckedRadioButtonId());
+          WavWriter.write(tmp, rangePcm, source.sampleRate, finalRate, finalBits, finalStereoMono,
+              finalTrueMono);
 
           try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(fileUri, "w");
               FileOutputStream out = new FileOutputStream(pfd.getFileDescriptor());

@@ -73,7 +73,7 @@ public class BankManager {
             f = new File(bank.dir, safe + "_" + counter + ".wav");
             counter++;
         }
-        WavWriter.write(f, clip.pcm, clip.sampleRate, clip.sampleRate, 16, false);
+        WavWriter.write(f, clip.pcm, clip.sampleRate, clip.sampleRate, 16, false, false);
         return f;
     }
 
@@ -98,7 +98,7 @@ public class BankManager {
             out = new File(bank.dir, safe + "_" + counter + ".wav");
             counter++;
         }
-        WavWriter.write(out, r.pcm, r.sampleRate, r.sampleRate, 16, false);
+        WavWriter.write(out, r.pcm, r.sampleRate, r.sampleRate, 16, false, false);
         AudioClip c = new AudioClip(out.getName(), r.pcm, r.sampleRate);
         c.dir = out;
         return c;

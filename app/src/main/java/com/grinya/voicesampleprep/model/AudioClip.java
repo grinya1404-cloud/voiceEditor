@@ -277,7 +277,7 @@ public class AudioClip {
   public void save() throws java.io.IOException {
     if (dir == null)
       throw new java.io.IOException("No file");
-    com.grinya.voicesampleprep.audio.WavWriter.write(dir, pcm, sampleRate, sampleRate, 16, false);
+    com.grinya.voicesampleprep.audio.WavWriter.write(dir, pcm, sampleRate, sampleRate, 16, false, false);
   }
 
   /**

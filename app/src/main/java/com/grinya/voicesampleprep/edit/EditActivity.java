@@ -124,6 +124,9 @@ public class EditActivity extends AppCompatActivity
         Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show();
       }
     });
+    findViewById(R.id.btnInfo).setOnClickListener(v -> {
+      com.grinya.voicesampleprep.util.AudioInfoDialog.show(this, clip);
+    });
     findViewById(R.id.btnExport).setOnClickListener(v -> {
       int selStart = wave.hasSelection() ? wave.getSelStart() : -1;
       int selEnd = wave.hasSelection() ? wave.getSelEnd() : -1;
