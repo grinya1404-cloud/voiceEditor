@@ -1,260 +1,277 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/bg">
 
-    <LinearLayout
+    <!-- Прокручиваемое содержимое -->
+    <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Экспорт"
-            android:textColor="@color/onSurface"
-            android:textSize="22sp"
-            android:textStyle="bold" />
-
-        <!-- Режим -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Режим"
-            android:textColor="@color/accent"
-            android:textSize="14sp" />
-
-        <RadioGroup
-            android:id="@+id/rgMode"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-            <RadioButton
-                android:id="@+id/rbSingle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="@color/onSurface"
-                android:text="Один файл (весь клип или выделение)"
-                android:checked="true" />
-
-            <RadioButton
-                android:id="@+id/rbByMarkers"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="@color/onSurface"
-                android:text="По маркерам (каждый интервал → отдельный файл)" />
-        </RadioGroup>
-
-        <!-- Формат -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Битность"
-            android:textColor="@color/accent"
-            android:textSize="14sp" />
-
-        <RadioGroup
-            android:id="@+id/rgBits"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <RadioButton
-                android:id="@+id/rb16"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textColor="@color/onSurface"
-                android:text="16-bit"
-                android:checked="true" />
-
-            <RadioButton
-                android:id="@+id/rb24"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textColor="@color/onSurface"
-                android:text="24-bit" />
-        </RadioGroup>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Sample rate"
-            android:textColor="@color/accent"
-            android:textSize="14sp" />
-
-        <RadioGroup
-            android:id="@+id/rgRate"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <RadioButton
-                android:id="@+id/rb441"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textColor="@color/onSurface"
-                android:text="44.1 кГц" />
-
-            <RadioButton
-                android:id="@+id/rb48"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textColor="@color/onSurface"
-                android:text="48 кГц"
-                android:checked="true" />
-        </RadioGroup>
-
-        <!-- Каналы -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Каналы"
-            android:textColor="@color/accent"
-            android:textSize="14sp" />
-
-        <RadioGroup
-            android:id="@+id/rgChannels"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <RadioButton
-                android:id="@+id/rbStereo"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textColor="@color/onSurface"
-                android:text="Stereo"
-                android:checked="true" />
-
-            <RadioButton
-                android:id="@+id/rbStereoMono"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textColor="@color/onSurface"
-                android:text="Stereo\nMono" />
-
-            <RadioButton
-                android:id="@+id/rbTrueMono"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textColor="@color/onSurface"
-                android:text="True\nMono" />
-        </RadioGroup>
-
-        <!-- Опции -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Опции"
-            android:textColor="@color/accent"
-            android:textSize="14sp" />
-
-        <CheckBox
-            android:id="@+id/cbNormalize"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="@color/onSurface"
-            android:text="Нормализовать (пик 0.9)" />
-
-        <CheckBox
-            android:id="@+id/cbFade"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="@color/onSurface"
-            android:text="Fade 5 мс по краям (анти-щелчок)" />
-
-        <CheckBox
-            android:id="@+id/cbTrimSilence"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="@color/onSurface"
-            android:text="Обрезать тишину по краям (порог -50 dB)" />
-
-        <!-- Имя -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Шаблон имени"
-            android:textColor="@color/accent"
-            android:textSize="14sp" />
-
-        <EditText
-            android:id="@+id/edName"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="@color/onSurface"
-            android:hint="{name}_{index}"
-            android:text="{name}_{index}"
-            android:inputType="text" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="{name} — имя клипа, {index} — номер, {note} — нота (вручную)"
-            android:textColor="@color/wave"
-            android:textSize="11sp" />
+        android:layout_height="match_parent">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="16dp">
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:paddingTop="64dp"> <!-- отступ сверху под кнопки -->
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Экспорт"
+                android:textColor="@color/onSurface"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <!-- Режим -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Режим"
+                android:textColor="@color/accent"
+                android:textSize="14sp" />
+
+            <RadioGroup
+                android:id="@+id/rgMode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <RadioButton
+                    android:id="@+id/rbSingle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/onSurface"
+                    android:text="Один файл (весь клип или выделение)"
+                    android:checked="true" />
+
+                <RadioButton
+                    android:id="@+id/rbByMarkers"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/onSurface"
+                    android:text="По маркерам (каждый интервал → отдельный файл)" />
+            </RadioGroup>
+
+            <!-- Формат -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Битность"
+                android:textColor="@color/accent"
+                android:textSize="14sp" />
+
+            <RadioGroup
+                android:id="@+id/rgBits"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <RadioButton
+                    android:id="@+id/rb16"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/onSurface"
+                    android:text="16-bit"
+                    android:checked="true" />
+
+                <RadioButton
+                    android:id="@+id/rb24"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/onSurface"
+                    android:text="24-bit" />
+            </RadioGroup>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Sample rate"
+                android:textColor="@color/accent"
+                android:textSize="14sp" />
+
+            <RadioGroup
+                android:id="@+id/rgRate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <RadioButton
+                    android:id="@+id/rb441"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/onSurface"
+                    android:text="44.1 кГц" />
+
+                <RadioButton
+                    android:id="@+id/rb48"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/onSurface"
+                    android:text="48 кГц"
+                    android:checked="true" />
+            </RadioGroup>
+
+            <!-- Каналы -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Каналы"
+                android:textColor="@color/accent"
+                android:textSize="14sp" />
+
+            <RadioGroup
+                android:id="@+id/rgChannels"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <RadioButton
+                    android:id="@+id/rbStereo"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/onSurface"
+                    android:text="Stereo"
+                    android:checked="true" />
+
+                <RadioButton
+                    android:id="@+id/rbStereoMono"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/onSurface"
+                    android:text="Stereo\nMono" />
+
+                <RadioButton
+                    android:id="@+id/rbTrueMono"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/onSurface"
+                    android:text="True\nMono" />
+            </RadioGroup>
+
+            <!-- Опции -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Опции"
+                android:textColor="@color/accent"
+                android:textSize="14sp" />
+
+            <CheckBox
+                android:id="@+id/cbNormalize"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/onSurface"
+                android:text="Нормализовать (пик 0.9)" />
+
+            <CheckBox
+                android:id="@+id/cbFade"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/onSurface"
+                android:text="Fade 5 мс по краям (анти-щелчок)" />
+
+            <CheckBox
+                android:id="@+id/cbTrimSilence"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/onSurface"
+                android:text="Обрезать тишину по краям (порог -50 dB)" />
+
+            <!-- Имя -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Шаблон имени"
+                android:textColor="@color/accent"
+                android:textSize="14sp" />
+
+            <EditText
+                android:id="@+id/edName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/onSurface"
+                android:hint="{name}_{index}"
+                android:text="{name}_{index}"
+                android:inputType="text" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="{name} — имя клипа, {index} — номер"
+                android:textColor="@color/wave"
+                android:textSize="11sp" />
 
             <Button
-                android:id="@+id/btnDefaults"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Умолчание"
+                android:id="@+id/btnExport"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="24dp"
+                android:text="ЭКСПОРТИРОВАТЬ"
+                android:textStyle="bold"
+                android:backgroundTint="@color/accent"
+                android:textColor="@color/bg" />
+
+            <Button
+                android:id="@+id/btnCancel"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="8dp"
+                android:text="Отмена"
                 android:backgroundTint="@color/surface"
                 android:textColor="@color/onSurface" />
-
-            <Button
-                android:id="@+id/btnOriginal"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Исходные"
-                android:backgroundTint="@color/surface"
-                android:textColor="@color/accent" />
         </LinearLayout>
+    </ScrollView>
+
+    <!-- Плавающие кнопки в правом верхнем углу -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="12dp"
+        android:layout_marginEnd="12dp"
+        android:orientation="horizontal">
 
         <Button
-            android:id="@+id/btnExport"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:layout_marginTop="24dp"
-            android:text="ЭКСПОРТИРОВАТЬ"
+            android:id="@+id/btnDefaults"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:minWidth="64dp"
+            android:layout_marginEnd="6dp"
+            android:text="Def"
+            android:textColor="@color/onSurface"
+            android:textSize="11sp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:backgroundTint="#2A2A2E" />
+
+        <Button
+            android:id="@+id/btnOriginal"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:minWidth="64dp"
+            android:text="Meta"
+            android:textColor="@color/bg"
+            android:textSize="11sp"
             android:textStyle="bold"
-            android:backgroundTint="@color/accent"
-            android:textColor="@color/bg" />
-
-        <Button
-            android:id="@+id/btnCancel"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginTop="8dp"
-            android:text="Отмена"
-            android:backgroundTint="@color/surface"
-            android:textColor="@color/onSurface" />
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:backgroundTint="@color/accent" />
     </LinearLayout>
-</ScrollView>
+
+</FrameLayout>
