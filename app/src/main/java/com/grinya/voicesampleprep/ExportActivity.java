@@ -142,16 +142,37 @@ public class ExportActivity extends AppCompatActivity {
         try {
           float[] rangePcm = AudioOps.trim(source.pcm, r[0], r[1]);
 
-          if (finalTrimSilence)
-            rangePcm = trimSilence(rangePcm, 0.003f);
-          if (finalNormalize)
+          // 1. Сведение каналов (ДО всех эффектов)
+          if (finalTrueMono) {
+            rangePcm = AudioOps.toMono(rangePcm); // 1 канал
+          } else if (finalStereoMono) {
+            float[] mono = AudioOps.toMono(rangePcm);
+            rangePcm = new float[mono.length * 2];
+            for (int i = 0; i < mono.length; i++) {
+              rangePcm[i * 2] = mono[i];
+              rangePcm[i * 2 + 1] = mono[i];
+            }
+          }
+
+          // 2. Обрезка тишины (по итоговому сигналу)
+          if (finalTrimSilence) {
+            int ch = finalTrueMono ? 1 : 2;
+            rangePcm = trimSilence(rangePcm, 0.003f, ch);
+          }
+
+          // 3. Normalize
+          if (finalNormalize) {
             rangePcm = AudioOps.normalizePeak(rangePcm, 0.9f);
+          }
+
+          // 4. Fade
           if (finalFade) {
             int ff = source.sampleRate * 5 / 1000;
             rangePcm = AudioOps.fadeIn(rangePcm, ff, true, true);
             rangePcm = AudioOps.fadeOut(rangePcm, ff, true, true);
           }
 
+          // 5. Формируем имя
           String nameNoExt = buildName(nameTemplate, baseName, idx + 1);
           if (nameNoExt.toLowerCase().endsWith(".wav")) {
             nameNoExt = nameNoExt.substring(0, nameNoExt.length() - 4);
@@ -167,20 +188,12 @@ public class ExportActivity extends AppCompatActivity {
 
           java.io.File tmp = new java.io.File(getCacheDir(), "exp_tmp.wav");
 
-          android.util.Log.d("EXPORT", "Writing: bits=" + finalBits + " rate=" + finalRate
-              + " stereoMono=" + finalStereoMono + " trueMono=" + finalTrueMono);
           android.util.Log.d("EXPORT",
-              "rbStereoMono exists: " + (findViewById(R.id.rbStereoMono) != null));
-          android.util.Log.d("EXPORT",
-              "rbTrueMono exists: " + (findViewById(R.id.rbTrueMono) != null));
-          android.util.Log.d("EXPORT", "rbStereoMono checked: "
-              + ((RadioButton) findViewById(R.id.rbStereoMono)).isChecked());
-          android.util.Log.d("EXPORT",
-              "rbTrueMono checked: " + ((RadioButton) findViewById(R.id.rbTrueMono)).isChecked());
-          android.util.Log.d("EXPORT", "rgChannels checkedId: "
-              + ((RadioGroup) findViewById(R.id.rgChannels)).getCheckedRadioButtonId());
-          WavWriter.write(tmp, rangePcm, source.sampleRate, finalRate, finalBits, finalStereoMono,
-              finalTrueMono);
+              "Writing: bits=" + finalBits + " rate=" + finalRate + " stereoMono=" + finalStereoMono
+                  + " trueMono=" + finalTrueMono + " pcm.length=" + rangePcm.length);
+
+          // 6. Запись (БЕЗ повторного сведения)
+          WavWriter.write(tmp, rangePcm, source.sampleRate, finalRate, finalBits, false, false);
 
           try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(fileUri, "w");
               FileOutputStream out = new FileOutputStream(pfd.getFileDescriptor());
@@ -243,19 +256,46 @@ public class ExportActivity extends AppCompatActivity {
   }
 
   /** Простая обрезка тишины по краям с порогом по амплитуде. */
-  private static float[] trimSilence(float[] pcm, float threshold) {
-    int ch = 2;
-    int total = pcm.length / ch;
-    int s = 0, e = total;
-    while (s < total && Math.abs(pcm[s * ch]) < threshold && Math.abs(pcm[s * ch + 1]) < threshold)
-      s++;
-    while (e > s && Math.abs(pcm[(e - 1) * ch]) < threshold
-        && Math.abs(pcm[(e - 1) * ch + 1]) < threshold)
-      e--;
-    if (e <= s)
+  private static float[] trimSilence(float[] pcm, float threshold, int channels) {
+    if (pcm.length == 0 || channels <= 0)
       return pcm;
-    float[] out = new float[(e - s) * ch];
-    System.arraycopy(pcm, s * ch, out, 0, out.length);
+    int total = pcm.length / channels;
+    int s = 0, e = total;
+
+    // Ищем первую не-тишину
+    for (int i = 0; i < total; i++) {
+      boolean silent = true;
+      for (int c = 0; c < channels; c++) {
+        if (Math.abs(pcm[i * channels + c]) >= threshold) {
+          silent = false;
+          break;
+        }
+      }
+      if (!silent) {
+        s = i;
+        break;
+      }
+    }
+
+    // Ищем последнюю не-тишину
+    for (int i = total - 1; i >= s; i--) {
+      boolean silent = true;
+      for (int c = 0; c < channels; c++) {
+        if (Math.abs(pcm[i * channels + c]) >= threshold) {
+          silent = false;
+          break;
+        }
+      }
+      if (!silent) {
+        e = i + 1;
+        break;
+      }
+    }
+
+    if (e <= s)
+      return new float[0];
+    float[] out = new float[(e - s) * channels];
+    System.arraycopy(pcm, s * channels, out, 0, out.length);
     return out;
   }
 
