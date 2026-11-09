@@ -16,7 +16,8 @@ import com.grinya.voicesampleprep.SettingsActivity;
 import com.grinya.voicesampleprep.audio.AudioDecoder;
 import com.grinya.voicesampleprep.audio.AudioPlayer;
 import com.grinya.voicesampleprep.model.AudioClip;
-import com.grinya.voicesampleprep.model.MarkerStore;
+// import com.grinya.voicesampleprep.model.MarkerStore;
+import com.grinya.voicesampleprep.model.AudioMeta;
 import java.util.Locale;
 
 public class EditActivity extends AppCompatActivity
@@ -64,8 +65,9 @@ public class EditActivity extends AppCompatActivity
 
     // Загружаем метки с диска (только если clip не null)
     if (clip.dir != null) {
+      AudioMeta meta = AudioMeta.load(clip.dir);
       clip.markers.clear();
-      clip.markers.addAll(MarkerStore.load(clip.dir));
+      clip.markers.addAll(meta.markers);
     }
 
     wave = findViewById(R.id.wave);
@@ -117,7 +119,7 @@ public class EditActivity extends AppCompatActivity
     findViewById(R.id.btnSave).setOnClickListener(v -> {
       try {
         clip.save(); // Сохраняет PCM в WAV
-        MarkerStore.save(clip.dir, clip.markers); // Сохраняет маркеры
+        // MarkerStore.save(clip.dir, clip.markers); // Сохраняет маркеры
         isChanged = false;
         Toast.makeText(this, "Сохранено", Toast.LENGTH_SHORT).show();
       } catch (Exception e) {
@@ -565,7 +567,7 @@ public class EditActivity extends AppCompatActivity
           .setPositiveButton("Сохранить", (d, w) -> {
             try {
               clip.save();
-              MarkerStore.save(clip.dir, clip.markers);
+              // MarkerStore.save(clip.dir, clip.markers);
               isChanged = false;
               finish();
             } catch (Exception e) {

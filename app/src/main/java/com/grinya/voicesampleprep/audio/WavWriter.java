@@ -21,36 +21,52 @@ public final class WavWriter {
    * @param bits    16 или 24
    * @param mono    true — свести в моно
    */
-  public static void write(File f, float[] pcm, int srcRate, int dstRate, int bits, boolean mono,
-      boolean forceMono) throws IOException {
+  public static void write(File f, float[] pcm, int srcRate, int dstRate, int bits,
+      boolean isStereoMono, boolean isTrueMono, boolean normalize, boolean fade,
+      boolean trimSilence) throws IOException {
     float[] data = pcm;
     int rate = srcRate;
 
-    // if (dstRate != srcRate) {
-    //   data = AudioOps.resample(data, srcRate, dstRate);
-    //   rate = dstRate;
-    // }
-
-    // Логика каналов:
-    // 1. Если forceMono == true (True Mono) -> усредняем в 1 канал
-    // 2. Если forceMono == false и mono == true (Stereo-Mono) -> оставляем 2 канала, но усредняем звук
-    // 3. Если оба false (Stereo) -> оставляем как есть
-
-    if (forceMono) {
-      data = AudioOps.toMono(data);
-    } else if (mono) {
-      // Усредняем L и R, но оставляем 2 канала для совместимости
-      int frames = data.length / 2;
-      float[] stereoMono = new float[data.length];
-      for (int i = 0; i < frames; i++) {
-        float avg = (data[i * 2] + data[i * 2 + 1]) * 0.5f;
-        stereoMono[i * 2] = avg;
-        stereoMono[i * 2 + 1] = avg;
-      }
-      data = stereoMono;
+    // 1. Ресемплинг (стерео)
+    if (dstRate != srcRate) {
+      data = AudioOps.resample(data, srcRate, dstRate);
+      rate = dstRate;
     }
 
-    int channels = forceMono ? 1 : 2;
+    // 2. Сведение
+    if (isTrueMono) {
+      data = AudioOps.toMono(data);
+    } else if (isStereoMono) {
+      float[] mono = AudioOps.toMono(data);
+      data = new float[mono.length * 2];
+      for (int i = 0; i < mono.length; i++) {
+        data[i * 2] = mono[i];
+        data[i * 2 + 1] = mono[i];
+      }
+    }
+
+    // 3. Trim Silence (по итоговому сигналу)
+    if (trimSilence) {
+      int ch = isTrueMono ? 1 : 2;
+      data = trimSilence(data, 0.003f, ch);
+    }
+
+    // 4. Normalize (по итоговому сигналу)
+    if (normalize) {
+      data = AudioOps.normalizePeak(data, 0.9f);
+    }
+
+    // 5. Fade (по итоговому сигналу)
+    if (fade) {
+      int ff = rate * 5 / 1000;
+      data = AudioOps.fadeIn(data, ff, true, true);
+      data = AudioOps.fadeOut(data, ff, true, true);
+    }
+
+    // 6. Определяем channels
+    int channels = isTrueMono ? 1 : 2;
+
+    // 7. Запись (как у тебя сейчас)
     int bytesPerSample = bits / 8;
     int dataBytes = data.length * bytesPerSample;
 
@@ -126,5 +142,41 @@ public final class WavWriter {
     out.write((v >> 8) & 0xFF);
     out.write((v >> 16) & 0xFF);
     out.write((v >> 24) & 0xFF);
+  }
+
+  private static float[] trimSilence(float[] pcm, float threshold, int channels) {
+    int total = pcm.length / channels;
+    int s = 0, e = total;
+    for (int i = 0; i < total; i++) {
+      boolean silent = true;
+      for (int c = 0; c < channels; c++) {
+        if (Math.abs(pcm[i * channels + c]) >= threshold) {
+          silent = false;
+          break;
+        }
+      }
+      if (!silent) {
+        s = i;
+        break;
+      }
+    }
+    for (int i = total - 1; i >= s; i--) {
+      boolean silent = true;
+      for (int c = 0; c < channels; c++) {
+        if (Math.abs(pcm[i * channels + c]) >= threshold) {
+          silent = false;
+          break;
+        }
+      }
+      if (!silent) {
+        e = i + 1;
+        break;
+      }
+    }
+    if (e <= s)
+      return new float[0];
+    float[] out = new float[(e - s) * channels];
+    System.arraycopy(pcm, s * channels, out, 0, out.length);
+    return out;
   }
 }

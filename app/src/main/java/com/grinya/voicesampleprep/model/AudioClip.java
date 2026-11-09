@@ -277,7 +277,17 @@ public class AudioClip {
   public void save() throws java.io.IOException {
     if (dir == null)
       throw new java.io.IOException("No file");
-    com.grinya.voicesampleprep.audio.WavWriter.write(dir, pcm, sampleRate, sampleRate, 16, false, false);
+    com.grinya.voicesampleprep.audio.WavWriter.write(dir, pcm, sampleRate, sampleRate, 16, false,
+        false, false, false, false);
+
+    // Сохраняем .meta (маркеры + текущие параметры)
+    AudioMeta meta = new AudioMeta();
+    meta.sampleRate = sampleRate;
+    meta.channels = CHANNELS;
+    meta.bits = 16;
+    meta.format = "wav";
+    meta.markers = new ArrayList<>(markers);
+    AudioMeta.save(dir, meta);
   }
 
   /**

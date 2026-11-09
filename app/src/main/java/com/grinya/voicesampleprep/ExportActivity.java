@@ -17,6 +17,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.grinya.voicesampleprep.audio.WavWriter;
 import com.grinya.voicesampleprep.model.AudioClip;
 import com.grinya.voicesampleprep.util.AudioOps;
+import com.grinya.voicesampleprep.model.AudioMeta;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -31,6 +32,7 @@ public class ExportActivity extends AppCompatActivity {
   private static AudioClip source;
   private static int selStart = -1;
   private static int selEnd = -1;
+  private AudioMeta originalMeta;
 
   public static void setSource(AudioClip clip, int s, int e) {
     source = clip;
@@ -46,6 +48,36 @@ public class ExportActivity extends AppCompatActivity {
       return;
     }
     setContentView(R.layout.activity_export);
+    // Загружаем .meta для умного экспорта
+    originalMeta = AudioMeta.load(source.dir);
+
+    // Автоматически ставим рекомендуемые параметры
+    if (originalMeta.channels == 1) {
+      ((RadioButton) findViewById(R.id.rbTrueMono)).setChecked(true);
+    } else if (originalMeta.channels == 2) {
+      ((RadioButton) findViewById(R.id.rbStereo)).setChecked(true);
+    }
+    if (originalMeta.sampleRate == 44100) {
+      ((RadioButton) findViewById(R.id.rb441)).setChecked(true);
+    } else if (originalMeta.sampleRate == 48000) {
+      ((RadioButton) findViewById(R.id.rb48)).setChecked(true);
+    }
+    if (originalMeta.bits == 24) {
+      ((RadioButton) findViewById(R.id.rb24)).setChecked(true);
+    } else if (originalMeta.bits == 16) {
+      ((RadioButton) findViewById(R.id.rb16)).setChecked(true);
+    }
+
+    // Показываем подсказку, если параметры отличаются от дефолтов
+    if (originalMeta.sampleRate != 0 && (originalMeta.sampleRate != 48000
+        || originalMeta.channels != 2 || originalMeta.bits != 16)) {
+      String hint = "Исходный файл: "
+          + (originalMeta.sampleRate == 44100 ? "44.1 кГц" : originalMeta.sampleRate + " Гц") + ", "
+          + (originalMeta.channels == 1 ? "моно" : "стерео")
+          + (originalMeta.bits > 0 ? ", " + originalMeta.bits + "-bit" : "")
+          + ". Рекомендуется экспортировать так же.";
+      Toast.makeText(this, hint, Toast.LENGTH_LONG).show();
+    }
 
     if (selStart >= 0 && selEnd > selStart) {
       // если есть выделение — по умолчанию «один файл»
@@ -60,6 +92,33 @@ public class ExportActivity extends AppCompatActivity {
 
     findViewById(R.id.btnExport).setOnClickListener(v -> startExport());
     findViewById(R.id.btnCancel).setOnClickListener(v -> finish());
+    findViewById(R.id.btnDefaults).setOnClickListener(v -> {
+      // Наши дефолты: 48к, Stereo, 16-bit
+      ((RadioButton) findViewById(R.id.rb48)).setChecked(true);
+      ((RadioButton) findViewById(R.id.rbStereo)).setChecked(true);
+      ((RadioButton) findViewById(R.id.rb16)).setChecked(true);
+    });
+
+    findViewById(R.id.btnOriginal).setOnClickListener(v -> {
+      if (originalMeta.sampleRate == 0 && originalMeta.channels == 0) {
+        Toast.makeText(this, "Исходные параметры неизвестны", Toast.LENGTH_SHORT).show();
+        return;
+      }
+      if (originalMeta.sampleRate == 44100)
+        ((RadioButton) findViewById(R.id.rb441)).setChecked(true);
+      else
+        ((RadioButton) findViewById(R.id.rb48)).setChecked(true);
+
+      if (originalMeta.channels == 1)
+        ((RadioButton) findViewById(R.id.rbTrueMono)).setChecked(true);
+      else if (originalMeta.channels == 2)
+        ((RadioButton) findViewById(R.id.rbStereo)).setChecked(true);
+
+      if (originalMeta.bits == 24)
+        ((RadioButton) findViewById(R.id.rb24)).setChecked(true);
+      else if (originalMeta.bits == 16)
+        ((RadioButton) findViewById(R.id.rb16)).setChecked(true);
+    });
   }
 
   private void startExport() {
@@ -142,34 +201,11 @@ public class ExportActivity extends AppCompatActivity {
         try {
           float[] rangePcm = AudioOps.trim(source.pcm, r[0], r[1]);
 
-          // Ресемплинг (стерео)
-          if (finalRate != source.sampleRate) {
-            rangePcm = AudioOps.resample(rangePcm, source.sampleRate, finalRate);
-          }
-
-          // Trim silence (для стерео всегда ch=2)
-          if (finalTrimSilence) {
-            rangePcm = trimSilence(rangePcm, 0.003f, 2);
-          }
-
-          // Normalize
-          if (finalNormalize) {
-            rangePcm = AudioOps.normalizePeak(rangePcm, 0.9f);
-          }
-
-          // Fade
-          if (finalFade) {
-            int ff = source.sampleRate * 5 / 1000;
-            rangePcm = AudioOps.fadeIn(rangePcm, ff, true, true);
-            rangePcm = AudioOps.fadeOut(rangePcm, ff, true, true);
-          }
-
-          // 5. Формируем имя
+          // Формируем имя
           String nameNoExt = buildName(nameTemplate, baseName, idx + 1);
           if (nameNoExt.toLowerCase().endsWith(".wav")) {
             nameNoExt = nameNoExt.substring(0, nameNoExt.length() - 4);
           }
-
           fileName = getUniqueName(dir, nameNoExt, ".wav");
 
           Uri fileUri = createFile(treeUri, fileName);
@@ -178,17 +214,20 @@ public class ExportActivity extends AppCompatActivity {
             continue;
           }
 
+          // Временный файл
           java.io.File tmp = new java.io.File(getCacheDir(), "exp_tmp.wav");
 
           android.util.Log.d("EXPORT",
               "Writing: bits=" + finalBits + " rate=" + finalRate + " stereoMono=" + finalStereoMono
-                  + " trueMono=" + finalTrueMono + " pcm.length=" + rangePcm.length);
+                  + " trueMono=" + finalTrueMono + " normalize=" + finalNormalize + " fade="
+                  + finalFade + " trimSilence=" + finalTrimSilence + " pcm.length="
+                  + rangePcm.length);
 
-          // 6. Запись (БЕЗ повторного сведения)
-          // WavWriter.write(tmp, rangePcm, source.sampleRate, finalRate, finalBits, false, false);
-          WavWriter.write(tmp, rangePcm, finalRate, finalRate, finalBits, finalStereoMono,
-              finalTrueMono);
+          // Всё делает WavWriter: ресемплинг, сведение, эффекты, запись
+          WavWriter.write(tmp, rangePcm, source.sampleRate, finalRate, finalBits, finalStereoMono,
+              finalTrueMono, finalNormalize, finalFade, finalTrimSilence);
 
+          // Копируем во временное через SAF
           try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(fileUri, "w");
               FileOutputStream out = new FileOutputStream(pfd.getFileDescriptor());
               java.io.FileInputStream in = new java.io.FileInputStream(tmp)) {

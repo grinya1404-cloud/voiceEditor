@@ -211,6 +211,33 @@
             android:textColor="@color/wave"
             android:textSize="11sp" />
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="16dp">
+
+            <Button
+                android:id="@+id/btnDefaults"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Умолчание"
+                android:backgroundTint="@color/surface"
+                android:textColor="@color/onSurface" />
+
+            <Button
+                android:id="@+id/btnOriginal"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Исходные"
+                android:backgroundTint="@color/surface"
+                android:textColor="@color/accent" />
+        </LinearLayout>
+
         <Button
             android:id="@+id/btnExport"
             android:layout_width="match_parent"
