@@ -58,6 +58,7 @@ public class WaveformView extends View {
   private double viewFramesPerPixel = 1;
   private int playheadFrame = 0;
   private int activePlayFrame = 0;
+  private final Paint pWaveFill = new Paint(Paint.ANTI_ALIAS_FLAG);
 
   private int selStart = -1;
   private int selEnd = -1;
@@ -163,6 +164,9 @@ public class WaveformView extends View {
     pWave.setColor(colorWave);
     pWave.setStrokeWidth(1.5f);
     pWave.setStyle(Paint.Style.STROKE);
+
+    pWaveFill.setColor(0x55FFFFFF); // белый с прозрачностью 33% (или другой оттенок)
+    pWaveFill.setStyle(Paint.Style.FILL);
 
     pCenter.setColor(colorCenterLine);
     pCenter.setStrokeWidth(1f);
@@ -698,6 +702,7 @@ public class WaveformView extends View {
           wavePath.lineTo(x, y);
         }
         wavePath.close();
+        canvas.drawPath(wavePath, pWaveFill);
         canvas.drawPath(wavePath, pWave);
 
         wavePath.reset();
@@ -713,6 +718,7 @@ public class WaveformView extends View {
           wavePath.lineTo(x, y);
         }
         wavePath.close();
+        canvas.drawPath(wavePath, pWaveFill);
         canvas.drawPath(wavePath, pWave);
 
         canvas.drawLine(0, centerY, w, centerY, pCenter);
@@ -733,6 +739,7 @@ public class WaveformView extends View {
           wavePath.lineTo(x, y);
         }
         wavePath.close();
+        canvas.drawPath(wavePath, pWaveFill);
         canvas.drawPath(wavePath, pWave);
         canvas.drawLine(0, centerY, w, centerY, pCenter);
       }
