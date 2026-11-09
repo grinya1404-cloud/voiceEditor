@@ -26,10 +26,10 @@ public final class WavWriter {
     float[] data = pcm;
     int rate = srcRate;
 
-    if (dstRate != srcRate) {
-      data = AudioOps.resample(data, srcRate, dstRate);
-      rate = dstRate;
-    }
+    // if (dstRate != srcRate) {
+    //   data = AudioOps.resample(data, srcRate, dstRate);
+    //   rate = dstRate;
+    // }
 
     // Логика каналов:
     // 1. Если forceMono == true (True Mono) -> усредняем в 1 канал

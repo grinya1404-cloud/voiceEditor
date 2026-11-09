@@ -142,30 +142,22 @@ public class ExportActivity extends AppCompatActivity {
         try {
           float[] rangePcm = AudioOps.trim(source.pcm, r[0], r[1]);
 
-          // 1. Сведение каналов (ДО всех эффектов)
-          if (finalTrueMono) {
-            rangePcm = AudioOps.toMono(rangePcm); // 1 канал
-          } else if (finalStereoMono) {
-            float[] mono = AudioOps.toMono(rangePcm);
-            rangePcm = new float[mono.length * 2];
-            for (int i = 0; i < mono.length; i++) {
-              rangePcm[i * 2] = mono[i];
-              rangePcm[i * 2 + 1] = mono[i];
-            }
+          // Ресемплинг (стерео)
+          if (finalRate != source.sampleRate) {
+            rangePcm = AudioOps.resample(rangePcm, source.sampleRate, finalRate);
           }
 
-          // 2. Обрезка тишины (по итоговому сигналу)
+          // Trim silence (для стерео всегда ch=2)
           if (finalTrimSilence) {
-            int ch = finalTrueMono ? 1 : 2;
-            rangePcm = trimSilence(rangePcm, 0.003f, ch);
+            rangePcm = trimSilence(rangePcm, 0.003f, 2);
           }
 
-          // 3. Normalize
+          // Normalize
           if (finalNormalize) {
             rangePcm = AudioOps.normalizePeak(rangePcm, 0.9f);
           }
 
-          // 4. Fade
+          // Fade
           if (finalFade) {
             int ff = source.sampleRate * 5 / 1000;
             rangePcm = AudioOps.fadeIn(rangePcm, ff, true, true);
@@ -193,7 +185,9 @@ public class ExportActivity extends AppCompatActivity {
                   + " trueMono=" + finalTrueMono + " pcm.length=" + rangePcm.length);
 
           // 6. Запись (БЕЗ повторного сведения)
-          WavWriter.write(tmp, rangePcm, source.sampleRate, finalRate, finalBits, false, false);
+          // WavWriter.write(tmp, rangePcm, source.sampleRate, finalRate, finalBits, false, false);
+          WavWriter.write(tmp, rangePcm, finalRate, finalRate, finalBits, finalStereoMono,
+              finalTrueMono);
 
           try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(fileUri, "w");
               FileOutputStream out = new FileOutputStream(pfd.getFileDescriptor());
