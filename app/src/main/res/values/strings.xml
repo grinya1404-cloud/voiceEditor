@@ -30,4 +30,6 @@
     <string name="normalize_dialog_title">Normalize peak (0..1)</string>
     <string name="fade_dialog_title">Fade length (ms)</string>
     <string name="no_selection">Сначала выделите фрагмент</string>
+    <string name="clip">clip</string>
+    <string name="denoise">Denoise</string>
 </resources>

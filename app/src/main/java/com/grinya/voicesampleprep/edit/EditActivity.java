@@ -224,6 +224,36 @@ public class EditActivity extends AppCompatActivity
     });
     findViewById(R.id.btnGain).setOnClickListener(v -> showGainDialog());
     findViewById(R.id.btnNormalize).setOnClickListener(v -> showNormalizeDialog());
+    findViewById(R.id.btnDenoise).setOnClickListener(v -> {
+      if (clip.pcm == null || clip.pcm.length == 0)
+        return;
+
+      int start = wave.hasSelection() ? wave.getSelStart() : 0;
+      int end = wave.hasSelection() ? wave.getSelEnd() : clip.frameCount();
+
+      // Вырезаем кусок для обработки
+      float[] range = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, start, end);
+
+      Toast.makeText(this, "Обработка Denoise...", Toast.LENGTH_SHORT).show();
+
+      new Thread(() -> {
+        try {
+          // Применяем наш шумодав (RNNoise)
+          float[] denoised = com.grinya.voicesampleprep.util.Denoiser.denoiseStereo(range);
+
+          runOnUiThread(() -> {
+            // Вставляем обработанный звук обратно
+            clip.insert(denoised, start, start, end);
+            refreshAfterChange();
+            Toast.makeText(this, "Denoise готов", Toast.LENGTH_SHORT).show();
+          });
+        } catch (Throwable e) {
+          android.util.Log.e("DENOISE_UI", "Ошибка", e);
+          runOnUiThread(
+              () -> Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show());
+        }
+      }).start();
+    });
     findViewById(R.id.btnFadeIn).setOnClickListener(v -> showFadeDialog(true));
     findViewById(R.id.btnFadeOut).setOnClickListener(v -> showFadeDialog(false));
     findViewById(R.id.btnReverse).setOnClickListener(v -> {

@@ -44,7 +44,7 @@ java = ["src/test/java", "src/test/kotlin"]
 resources = ["src/test/resources"]
 
 [dependencies]
-implementation = ["androidx.appcompat:appcompat:1.6.1", "com.google.android.material:material:1.11.0", "androidx.constraintlayout:constraintlayout:2.1.4", "androidx.documentfile:documentfile:1.0.1"]
+implementation = ["androidx.appcompat:appcompat:1.6.1", "com.google.android.material:material:1.11.0", "androidx.constraintlayout:constraintlayout:2.1.4", "androidx.documentfile:documentfile:1.0.1", "cn.enaium.rnnoise:rnnoise-kmp-android:1.0.2", "rnnoise-wrapper.aar"]
 
 [android]
 namespace = "com.grinya.voicesampleprep"

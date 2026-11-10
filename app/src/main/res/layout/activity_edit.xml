@@ -32,7 +32,7 @@
             android:textSize="15sp"
             android:singleLine="true"
             android:ellipsize="middle"
-            android:text="clip" />
+            android:text="@string/clip" />
 
         <ImageButton
             android:id="@+id/btnUndo"
@@ -223,6 +223,13 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/normalize" />
+
+            <Button
+                android:id="@+id/btnDenoise"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/denoise" />
 
             <Button
                 android:id="@+id/btnFadeIn"
