@@ -62,6 +62,7 @@ public class WaveformView extends View {
 
   private int selStart = -1;
   private int selEnd = -1;
+  private int paddingPx;
 
   private boolean stereoView = false;
   private boolean channelL = true;
@@ -168,6 +169,7 @@ public class WaveformView extends View {
     markerFlagW = (int) (MARKER_FLAG_W_DP * density);
     markerFlagH = (int) (MARKER_FLAG_H_DP * density);
     checkSize = (int) (24 * density);
+    paddingPx = (int) (25 * density); // Отступ по 40dp с каждой стороны
 
     pWave.setColor(colorWave);
     pWave.setStrokeWidth(1.5f);
@@ -387,7 +389,7 @@ public class WaveformView extends View {
   }
 
   public void zoomToFit() {
-    int w = getWidth();
+    int w = getWidth() - 2 * paddingPx; // Учитываем отступы
     if (w <= 0 || totalFrames <= 0)
       return;
     viewStartFrame = 0;
@@ -609,7 +611,12 @@ public class WaveformView extends View {
       viewStartFrame = 0;
       return;
     }
-    double visibleFrames = getWidth() * viewFramesPerPixel;
+    // Видимая область для волны (минус отступы)
+    int visibleWidth = getWidth() - 2 * paddingPx;
+    if (visibleWidth <= 0)
+      return;
+
+    double visibleFrames = visibleWidth * viewFramesPerPixel;
     double maxStart = Math.max(0, totalFrames - visibleFrames);
     if (viewStartFrame < 0)
       viewStartFrame = 0;
@@ -756,29 +763,40 @@ public class WaveformView extends View {
     int scaleW = ampScaleWidthPx;
     int scaleX = w - scaleW; // левый край шкалы
 
+    // 1. Фон линейки (на всю ширину, чтобы не было пустых краев)
     canvas.drawRect(0, 0, w, rulerH, pRuler);
-    drawRuler(canvas, w, rulerH);
+
+    // 2. Делаем сдвиг для волны И линейки
+    canvas.save();
+    canvas.translate(paddingPx, 0);
+    int waveWidth = w - 2 * paddingPx;
+
+    // 3. Рисуем линейку ВНУТРИ сдвинутого canvas
+    // Передаем waveWidth, чтобы деления не уезжали за пределы волны
+    drawRuler(canvas, waveWidth, rulerH);
 
     if (pcm == null || totalFrames == 0) {
-      canvas.drawLine(0, centerY, w, centerY, pCenter);
+      canvas.drawLine(0, centerY, waveWidth, centerY, pCenter);
+      canvas.restore(); // Обязательно возвращаем canvas
+      // Шкалу можно нарисовать и здесь, но она не нужна для пустого файла
       return;
     }
 
-    drawGrid(canvas, w, waveTop, waveBottom);
+    drawGrid(canvas, waveWidth, waveTop, waveBottom);
 
-    if (peakCacheWidth != w || peakCacheStart != viewStartFrame
+    if (peakCacheWidth != waveWidth || peakCacheStart != viewStartFrame
         || peakCacheFpp != viewFramesPerPixel) {
-      buildPeakCache(w);
+      buildPeakCache(waveWidth); // Передаем waveWidth!
     }
 
     // Горизонтальные линии уровня
     if (stereoView) {
       drawHorizontalLevels(canvas, waveTop + waveH / 4, waveH * 0.25f - 2, waveTop,
-          waveTop + waveH / 2, 0, scaleX);
+          waveTop + waveH / 2, 0, waveWidth); // waveWidth вместо scaleX
       drawHorizontalLevels(canvas, waveTop + 3 * waveH / 4, waveH * 0.25f - 2, waveTop + waveH / 2,
-          waveBottom, 0, scaleX);
+          waveBottom, 0, waveWidth); // waveWidth вместо scaleX
     } else {
-      drawHorizontalLevels(canvas, centerY, waveH * 0.5f - 2, waveTop, waveBottom, 0, scaleX);
+      drawHorizontalLevels(canvas, centerY, waveH * 0.5f - 2, waveTop, waveBottom, 0, waveWidth);
     }
 
     if (hasSelection()) {
@@ -794,14 +812,14 @@ public class WaveformView extends View {
         int botCenter = waveTop + 3 * waveH / 4;
 
         wavePath.reset();
-        for (int x = 0; x < w; x++) {
+        for (int x = 0; x < waveWidth; x++) { // waveWidth!
           float y = topCenter - peakMax[x] * halfH;
           if (x == 0)
             wavePath.moveTo(x, y);
           else
             wavePath.lineTo(x, y);
         }
-        for (int x = w - 1; x >= 0; x--) {
+        for (int x = waveWidth - 1; x >= 0; x--) { // waveWidth!
           float y = topCenter - peakMin[x] * halfH;
           wavePath.lineTo(x, y);
         }
@@ -810,14 +828,14 @@ public class WaveformView extends View {
         canvas.drawPath(wavePath, pWave);
 
         wavePath.reset();
-        for (int x = 0; x < w; x++) {
+        for (int x = 0; x < waveWidth; x++) { // waveWidth!
           float y = botCenter - peakMaxR[x] * halfH;
           if (x == 0)
             wavePath.moveTo(x, y);
           else
             wavePath.lineTo(x, y);
         }
-        for (int x = w - 1; x >= 0; x--) {
+        for (int x = waveWidth - 1; x >= 0; x--) { // waveWidth!
           float y = botCenter - peakMinR[x] * halfH;
           wavePath.lineTo(x, y);
         }
@@ -825,11 +843,11 @@ public class WaveformView extends View {
         canvas.drawPath(wavePath, pWaveFill);
         canvas.drawPath(wavePath, pWave);
 
-        canvas.drawLine(0, centerY, w, centerY, pCenter);
+        canvas.drawLine(0, centerY, waveWidth, centerY, pCenter); // waveWidth!
       } else {
         float halfH = waveH * 0.5f - 2;
         wavePath.reset();
-        for (int x = 0; x < w; x++) {
+        for (int x = 0; x < waveWidth; x++) { // waveWidth!
           float max = Math.max(peakMax[x], peakMaxR[x]);
           float y = centerY - max * halfH;
           if (x == 0)
@@ -837,7 +855,7 @@ public class WaveformView extends View {
           else
             wavePath.lineTo(x, y);
         }
-        for (int x = w - 1; x >= 0; x--) {
+        for (int x = waveWidth - 1; x >= 0; x--) { // waveWidth!
           float min = Math.min(peakMin[x], peakMinR[x]);
           float y = centerY - min * halfH;
           wavePath.lineTo(x, y);
@@ -845,7 +863,7 @@ public class WaveformView extends View {
         wavePath.close();
         canvas.drawPath(wavePath, pWaveFill);
         canvas.drawPath(wavePath, pWave);
-        canvas.drawLine(0, centerY, w, centerY, pCenter);
+        canvas.drawLine(0, centerY, waveWidth, centerY, pCenter); // waveWidth!
       }
     }
 
@@ -861,7 +879,7 @@ public class WaveformView extends View {
     if (markers != null) {
       for (int m : markers) {
         float x = frameToX(m);
-        if (x < -markerFlagW || x > w + markerFlagW)
+        if (x < -markerFlagW || x > waveWidth + markerFlagW) // waveWidth!
           continue;
         canvas.drawLine(x, waveTop, x, waveBottom, pMarker);
 
@@ -886,29 +904,39 @@ public class WaveformView extends View {
     }
 
     float px = frameToX(playheadFrame);
-    if (px >= 0 && px <= w) {
+    if (px >= 0 && px <= waveWidth) { // waveWidth!
       canvas.drawLine(px, waveTop, px, waveBottom, pPlayhead);
       canvas.drawRect(px - 5, waveTop, px + 5, waveTop + 8, pPlayhead);
     }
 
     float activePx = frameToX(activePlayFrame);
-    if (activePx >= 0 && activePx <= w && activePlayFrame != playheadFrame) {
+    if (activePx >= 0 && activePx <= waveWidth && activePlayFrame != playheadFrame) { // waveWidth!
       canvas.drawLine(activePx, waveTop, activePx, waveBottom, pActivePlayhead);
     }
 
+    // Рисуем ограничители (края файла) ВНУТРИ сдвинутого canvas
+    canvas.drawLine(0, waveTop, 0, waveBottom, pCenter); // Левый край
+    canvas.drawLine(waveWidth, waveTop, waveWidth, waveBottom, pCenter); // Правый край
+
+    canvas.restore(); // 3. Возвращаем canvas обратно
+
+    // --- ЧЕКБОКСЫ ПОВЕРХ ОТСТУПА (ВНЕ СДВИНУТОГО CANVAS) ---
     if (stereoView) {
-      checkLx = 10;
+      // Прижимаем к правому краю экрана (w), отнимаем размер и небольшой отступ
+      checkLx = w - checkSize - 10;
       checkLy = waveTop + 10;
       drawCheckbox(canvas, checkLx, checkLy, channelL);
-      canvas.drawText("L", checkLx + checkSize + 6, checkLy + checkSize - 6, pChannelText);
+      // Текст "L" слева от галочки
+      canvas.drawText("L", checkLx - 20, checkLy + checkSize - 6, pChannelText);
 
-      checkRx = 10;
+      checkRx = w - checkSize - 10;
       checkRy = waveTop + waveH / 2 + 10;
       drawCheckbox(canvas, checkRx, checkRy, channelR);
-      canvas.drawText("R", checkRx + checkSize + 6, checkRy + checkSize - 6, pChannelText);
+      // Текст "R" слева от галочки
+      canvas.drawText("R", checkRx - 20, checkRy + checkSize - 6, pChannelText);
     }
 
-    // Шкала амплитуды (справа, поверх волны)
+    // 4. Шкалу амплитуды рисуем ПОСЛЕ restore (она не должна сдвигаться)
     drawAmpScale(canvas, scaleX, w, waveTop, waveBottom, waveH);
   }
 

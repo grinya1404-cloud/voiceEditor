@@ -40,6 +40,8 @@ public class EditActivity extends AppCompatActivity
   private boolean isLeftEnabled = true;
   private boolean isRightEnabled = true;
 
+  private float[] clipboard = null; // Внутренний буфер обмена
+
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
@@ -94,7 +96,9 @@ public class EditActivity extends AppCompatActivity
         MODE_PRIVATE);
     isStereoMode = prefs.getBoolean(SettingsActivity.KEY_STEREO_WAVES, false);
     wave.setStereoView(isStereoMode);
-    wave.setZeroCrossingSnap(true);
+    boolean zeroCrossing = prefs.getBoolean("zero_crossing", true);
+    wave.setZeroCrossingSnap(zeroCrossing);
+    // wave.setZeroCrossingSnap(true);
     player.setChannelMask(isLeftEnabled, isRightEnabled);
 
     wireToolbar();
@@ -201,12 +205,60 @@ public class EditActivity extends AppCompatActivity
       wave.clearSelection(); // снятие выделения
       refreshAfterChange();
     });
+    // findViewById(R.id.btnCut).setOnClickListener(v -> {
+    // if (!requireSelection())
+    // return;
+    // clip.delete(wave.getSelStart(), wave.getSelEnd());
+    // wave.clearSelection(); // снятие выделения
+    // refreshAfterChange();
+    // });
+    // --- CUT (Вырезать) ---
     findViewById(R.id.btnCut).setOnClickListener(v -> {
       if (!requireSelection())
         return;
-      clip.delete(wave.getSelStart(), wave.getSelEnd());
-      wave.clearSelection(); // снятие выделения
+      int s = wave.getSelStart();
+      int e = wave.getSelEnd();
+
+      // 1. Копируем в буфер
+      clipboard = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, s, e);
+
+      // 2. Удаляем из файла
+      clip.delete(s, e);
+      wave.clearSelection(); // Сбрасываем выделение, так как координаты сместились
       refreshAfterChange();
+      Toast.makeText(this, "Вырезано", Toast.LENGTH_SHORT).show();
+    });
+
+    // --- COPY (Копировать) ---
+    findViewById(R.id.btnCopy).setOnClickListener(v -> {
+      if (!requireSelection())
+        return;
+      int s = wave.getSelStart();
+      int e = wave.getSelEnd();
+
+      clipboard = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, s, e);
+      Toast.makeText(this, "Скопировано", Toast.LENGTH_SHORT).show();
+      // Файл не меняется, выделение можно оставить, Undo не нужен
+    });
+
+    // --- PASTE (Вставить) ---
+    findViewById(R.id.btnPaste).setOnClickListener(v -> {
+      if (clipboard == null || clipboard.length == 0) {
+        Toast.makeText(this, "Буфер пуст", Toast.LENGTH_SHORT).show();
+        return;
+      }
+
+      int start = player.getCurrentFrame(); // Курсор
+      int selStart = wave.hasSelection() ? wave.getSelStart() : start;
+      int selEnd = wave.hasSelection() ? wave.getSelEnd() : start;
+
+      // Вставляем (метод insert сам заменит выделение, если оно есть)
+      clip.insert(clipboard, start, selStart, selEnd);
+
+      // После вставки выделение лучше сбросить (длина файла изменилась)
+      wave.clearSelection();
+      refreshAfterChange();
+      Toast.makeText(this, "Вставлено", Toast.LENGTH_SHORT).show();
     });
     findViewById(R.id.btnInsert).setOnClickListener(v -> {
       Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -222,6 +274,15 @@ public class EditActivity extends AppCompatActivity
       clip.silence(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
       refreshAfterChange();
     });
+
+    findViewById(R.id.btnAutoTrim).setOnClickListener(v -> {
+      // Порог -50 dB (около 0.003 амплитуды)
+      clip.autoTrim(0.003f);
+      wave.clearSelection(); // Сбрасываем выделение, так как длина изменилась
+      refreshAfterChange();
+      Toast.makeText(this, "Тишина обрезана", Toast.LENGTH_SHORT).show();
+    });
+
     findViewById(R.id.btnGain).setOnClickListener(v -> showGainDialog());
     findViewById(R.id.btnNormalize).setOnClickListener(v -> showNormalizeDialog());
     findViewById(R.id.btnDenoise).setOnClickListener(v -> {

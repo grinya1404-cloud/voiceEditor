@@ -45,6 +45,14 @@
         android:textColor="@color/onSurface"
         android:text="Разделять стерео на 2 волны" />
 
+    <CheckBox
+        android:id="@+id/cbZeroCrossing"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp"
+        android:textColor="@color/onSurface"
+        android:text="Прилипание к нулю (Zero-crossing)" />
+
     <Button
         android:id="@+id/btnAbout"
         android:layout_width="match_parent"

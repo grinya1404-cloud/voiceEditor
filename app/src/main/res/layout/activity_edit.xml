@@ -190,11 +190,32 @@
                 android:text="@string/trim" />
 
             <Button
+                android:id="@+id/btnAutoTrim"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/auto_trim" />
+
+            <Button
+                android:id="@+id/btnCopy"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/copy_1" />
+
+            <Button
                 android:id="@+id/btnCut"
                 style="?android:attr/buttonStyleSmall"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/cut" />
+
+            <Button
+                android:id="@+id/btnPaste"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/paste_1" />
 
             <Button
                 android:id="@+id/btnInsert"

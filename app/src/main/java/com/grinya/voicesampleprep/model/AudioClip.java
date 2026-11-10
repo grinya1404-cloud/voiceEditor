@@ -44,6 +44,49 @@ public class AudioClip {
     fixMarkersAfterTrim(startFrame, endFrame);
   }
 
+  /**
+   * Автоматически обрезает тишину в начале и конце.
+   * 
+   * @param threshold Порог амплитуды (0..1). Например, 0.003f (это ~ -50 dB).
+   */
+  public void autoTrim(float threshold) {
+    if (pcm == null || pcm.length == 0)
+      return;
+
+    int totalFrames = frameCount();
+    int startFrame = 0;
+    int endFrame = totalFrames;
+
+    // 1. Ищем первую не-тишину (с начала)
+    for (int i = 0; i < totalFrames; i++) {
+      float l = Math.abs(pcm[i * CHANNELS]);
+      float r = Math.abs(pcm[i * CHANNELS + 1]);
+      if (l > threshold || r > threshold) {
+        startFrame = i;
+        break;
+      }
+    }
+
+    // 2. Ищем последнюю не-тишину (с конца)
+    for (int i = totalFrames - 1; i >= startFrame; i--) {
+      float l = Math.abs(pcm[i * CHANNELS]);
+      float r = Math.abs(pcm[i * CHANNELS + 1]);
+      if (l > threshold || r > threshold) {
+        endFrame = i + 1;
+        break;
+      }
+    }
+
+    // Если нашли что обрезать — применяем
+    if (startFrame > 0 || endFrame < totalFrames) {
+      // Используем существующий метод trim
+      trim(startFrame, endFrame);
+    } else {
+      // Тишина не найдена (или файл полностью тихий)
+      // Ничего не делаем
+    }
+  }
+
   public void delete(int startFrame, int endFrame) {
     pushHistory();
     pcm = AudioOps.deleteRange(pcm, startFrame, endFrame);
