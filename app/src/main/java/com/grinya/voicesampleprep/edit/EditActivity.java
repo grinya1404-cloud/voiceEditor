@@ -224,6 +224,45 @@ public class EditActivity extends AppCompatActivity
     });
     findViewById(R.id.btnGain).setOnClickListener(v -> showGainDialog());
     findViewById(R.id.btnNormalize).setOnClickListener(v -> showNormalizeDialog());
+    findViewById(R.id.btnDenoise).setOnClickListener(v -> {
+      if (clip.pcm == null || clip.pcm.length == 0)
+        return;
+
+      boolean hasSel = wave.hasSelection();
+
+      new AlertDialog.Builder(this)
+          .setTitle(R.string.denoise_dialog_title)
+          .setItems(new String[] {
+              hasSel ? R.string.denoise_apply_selection : R.string.denoise_apply_whole,
+              hasSel ? R.string.denoise_apply_whole : R.string.denoise_apply_selection
+          }, (d, which) -> {
+            boolean applyWholeFile = (which == 1);
+            int start = applyWholeFile ? 0 : wave.getSelStart();
+            int end = applyWholeFile ? clip.frameCount() : wave.getSelEnd();
+
+            Toast.makeText(this, "Обработка Denoise...", Toast.LENGTH_SHORT).show();
+
+            new Thread(() -> {
+              try {
+                if (applyWholeFile) {
+                  clip.denoise(applyL(), applyR());
+                } else {
+                  clip.denoiseRange(start, end, applyL(), applyR());
+                }
+                runOnUiThread(() -> {
+                  refreshAfterChange();
+                  Toast.makeText(this, "Denoise готов", Toast.LENGTH_SHORT).show();
+                });
+              } catch (Exception e) {
+                runOnUiThread(() -> Toast
+                    .makeText(this, "Ошибка Denoise: " + e.getMessage(), Toast.LENGTH_LONG)
+                    .show());
+              }
+            }).start();
+          })
+          .setNegativeButton(R.string.cancel, null)
+          .show();
+    });
     findViewById(R.id.btnFadeIn).setOnClickListener(v -> showFadeDialog(true));
     findViewById(R.id.btnFadeOut).setOnClickListener(v -> showFadeDialog(false));
     findViewById(R.id.btnReverse).setOnClickListener(v -> {

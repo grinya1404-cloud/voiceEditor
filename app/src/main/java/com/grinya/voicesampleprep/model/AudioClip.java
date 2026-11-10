@@ -60,6 +60,52 @@ public class AudioClip {
     pcm = AudioOps.silenceRange(pcm, startFrame, endFrame, applyL, applyR);
   }
 
+  /** Шумоподавление всего файла. */
+  public void denoise(boolean applyL, boolean applyR) {
+    pushHistory();
+    if (pcm == null || pcm.length == 0)
+      return;
+    float[] denoised = com.grinya.voicesampleprep.util.Denoiser.denoiseStereo(pcm, sampleRate);
+    if (applyL && applyR) {
+      pcm = denoised;
+    } else {
+      // Применяем только к выбранным каналам, оставляя другие без изменений
+      int frames = frameCount();
+      float[] out = new float[pcm.length];
+      for (int i = 0; i < frames; i++) {
+        out[i * 2] = applyL ? denoised[i * 2] : pcm[i * 2];
+        out[i * 2 + 1] = applyR ? denoised[i * 2 + 1] : pcm[i * 2 + 1];
+      }
+      pcm = out;
+    }
+  }
+
+  /** Шумоподавление фрагмента [startFrame, endFrame). */
+  public void denoiseRange(int startFrame, int endFrame, boolean applyL, boolean applyR) {
+    pushHistory();
+    if (pcm == null || pcm.length == 0)
+      return;
+    int total = frameCount();
+    int s = Math.max(0, Math.min(startFrame, total));
+    int e = Math.max(s, Math.min(endFrame, total));
+    if (e <= s)
+      return;
+
+    // Вырезаем фрагмент, шумодавим, вставляем обратно
+    float[] range = AudioOps.trim(pcm, s, e);
+    float[] denoised = com.grinya.voicesampleprep.util.Denoiser.denoiseStereo(range, sampleRate);
+
+    float[] out = pcm.clone();
+    int rangeFrames = range.length / 2;
+    for (int i = 0; i < rangeFrames; i++) {
+      if (applyL)
+        out[(s + i) * 2] = denoised[i * 2];
+      if (applyR)
+        out[(s + i) * 2 + 1] = denoised[i * 2 + 1];
+    }
+    pcm = out;
+  }
+
   public void gainRange(int startFrame, int endFrame, float dB, boolean applyL, boolean applyR) {
     pushHistory();
     pcm = AudioOps.gainRange(pcm, startFrame, endFrame, dB, applyL, applyR);

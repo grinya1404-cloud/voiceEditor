@@ -24,8 +24,12 @@
     <string name="ok">OK</string>
     <string name="export">Export</string>
     <string name="invert">Invert</string>
-    
+    <string name="denoise">Denoise</string>
+
     <!-- dialogs -->
+    <string name="denoise_dialog_title">Шумоподавление</string>
+    <string name="denoise_apply_whole">Весь файл</string>
+    <string name="denoise_apply_selection">Только выделение</string>
     <string name="gain_dialog_title">Gain (dB)</string>
     <string name="normalize_dialog_title">Normalize peak (0..1)</string>
     <string name="fade_dialog_title">Fade length (ms)</string>
