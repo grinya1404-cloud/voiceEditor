@@ -35,9 +35,9 @@ public final class WavWriter {
 
     // 2. Сведение
     if (isTrueMono) {
-      data = AudioOps.toMono(data);
+      data = AudioOps.toMonoSmart(data);
     } else if (isStereoMono) {
-      float[] mono = AudioOps.toMono(data);
+      float[] mono = AudioOps.toMonoSmart(data);
       data = new float[mono.length * 2];
       for (int i = 0; i < mono.length; i++) {
         data[i * 2] = mono[i];
