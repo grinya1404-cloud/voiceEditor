@@ -10,6 +10,7 @@ import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.CheckBox;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -65,6 +66,13 @@ public class RecordActivity extends AppCompatActivity implements Recorder.Listen
     btnDone = findViewById(R.id.btnDone);
     txtTime = findViewById(R.id.txtTime);
     levelBar = findViewById(R.id.levelBar);
+
+    CheckBox cbNS = findViewById(R.id.cbNoiseSuppression);
+    cbNS.setChecked(true);
+    cbNS.setOnCheckedChangeListener((v, checked) -> {
+      if (recorder != null)
+        recorder.setNoiseSuppressionEnabled(checked);
+    });
 
     recorder = new Recorder();
     recorder.setListener(this);

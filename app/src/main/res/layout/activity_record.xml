@@ -36,6 +36,15 @@
         android:progress="0"
         android:progressTint="@color/accent" />
 
+    <CheckBox
+        android:id="@+id/cbNoiseSuppression"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Шумоподавление"
+        android:textColor="@color/onSurface"
+        android:checked="true" />
+
     <Space
         android:layout_width="match_parent"
         android:layout_height="0dp"
