@@ -94,6 +94,7 @@ public class EditActivity extends AppCompatActivity
         MODE_PRIVATE);
     isStereoMode = prefs.getBoolean(SettingsActivity.KEY_STEREO_WAVES, false);
     wave.setStereoView(isStereoMode);
+    wave.setZeroCrossingSnap(true);
     player.setChannelMask(isLeftEnabled, isRightEnabled);
 
     wireToolbar();
@@ -243,12 +244,13 @@ public class EditActivity extends AppCompatActivity
     });
     findViewById(R.id.btnMarker).setOnClickListener(v -> {
       if (wave.hasSelection()) {
-        // Ставим маркеры по краям выделения
         clip.addMarker(wave.getSelStart());
         clip.addMarker(wave.getSelEnd());
       } else {
-        // Обычный маркер по курсору
         int f = player.getCurrentFrame();
+        if (wave.isZeroCrossingSnap() && clip.pcm != null) {
+          f = com.grinya.voicesampleprep.util.AudioOps.nearestZeroCrossing(clip.pcm, f);
+        }
         clip.addMarker(f);
       }
       wave.updateMarkers(clip.markers);
@@ -437,13 +439,14 @@ public class EditActivity extends AppCompatActivity
 
   @Override
   public void onTap(int frame) {
-    player.seekToFrame(frame);
-    wave.setPlayheadFrame(frame);
-    wave.snapActivePlayheadFrame(frame);
+    int snapped = frame;
+    if (wave.isZeroCrossingSnap() && clip.pcm != null) {
+      snapped = com.grinya.voicesampleprep.util.AudioOps.nearestZeroCrossing(clip.pcm, frame);
+    }
+    player.seekToFrame(snapped);
+    wave.setPlayheadFrame(snapped);
+    wave.snapActivePlayheadFrame(snapped);
     updateTimeLabel();
-    // Синхронизируем кнопки
-    btnPlay.setEnabled(!player.isPlaying());
-    btnPause.setEnabled(player.isPlaying());
   }
 
   @Override

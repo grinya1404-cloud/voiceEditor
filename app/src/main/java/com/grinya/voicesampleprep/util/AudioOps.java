@@ -345,4 +345,37 @@ public final class AudioOps {
     }
     return out;
   }
+
+  public static float[] toMonoSmart(float[] pcm) {
+    int frames = pcm.length / 2;
+
+    // 1. Считаем корреляцию L и R (упрощённо, по всему массиву)
+    double sumLR = 0, sumL2 = 0, sumR2 = 0;
+    for (int i = 0; i < pcm.length; i += 2) {
+      sumLR += pcm[i] * pcm[i + 1];
+      sumL2 += pcm[i] * pcm[i];
+      sumR2 += pcm[i + 1] * pcm[i + 1];
+    }
+    double denom = Math.sqrt(sumL2 * sumR2);
+    double correlation = denom > 1e-9 ? sumLR / denom : 0;
+
+    float[] out = new float[frames];
+
+    if (correlation < 0) {
+      // Противофаза: берём максимум по модулю (без гашения)
+      for (int i = 0; i < frames; i++) {
+        float l = pcm[i * 2];
+        float r = pcm[i * 2 + 1];
+        out[i] = Math.abs(l) >= Math.abs(r) ? l : r;
+      }
+    } else {
+      // Нормальное стерео: Half-Power (1/√2 ≈ 0.7071)
+      float k = 0.7071f;
+      for (int i = 0; i < frames; i++) {
+        out[i] = (pcm[i * 2] + pcm[i * 2 + 1]) * k;
+      }
+    }
+    return out;
+  }
+
 }

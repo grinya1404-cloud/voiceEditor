@@ -155,6 +155,18 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:textColor="@color/accent"
             android:contentDescription="zoom in" />
+
+        <Button
+            android:id="@+id/btnMarker"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="8dp"
+            android:text="M"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="@color/bg"
+            android:backgroundTint="@color/accent"
+            android:contentDescription="Marker" />
     </LinearLayout>
 
     <!-- Панель инструментов (горизонтальный скролл) -->
@@ -240,12 +252,6 @@
                 android:layout_height="wrap_content"
                 android:text="@string/invert" />
 
-            <Button
-                android:id="@+id/btnMarker"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/marker" />
         </LinearLayout>
     </HorizontalScrollView>
 </LinearLayout>

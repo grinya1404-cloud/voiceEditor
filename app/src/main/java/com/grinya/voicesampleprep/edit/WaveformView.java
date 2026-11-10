@@ -83,6 +83,7 @@ public class WaveformView extends View {
   private final Paint pCheck = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final Paint pCheckBg = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final Paint pChannelText = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Paint pScaleBg = new Paint();
 
   private final Path wavePath = new Path();
 
@@ -100,6 +101,13 @@ public class WaveformView extends View {
   private int downSelStart, downSelEnd;
   private boolean longPressActivated = false;
   private int downMarkerFrame = -1;
+  private boolean zeroCrossingSnap = true; // включён по умолчанию
+
+  // Шкала амплитуды
+  private final Paint pAmpScale = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Paint pAmpText = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Paint pHGrid = new Paint();
+  private int ampScaleWidthPx;
 
   private final Runnable longPressRunnable = new Runnable() {
     @Override
@@ -193,6 +201,19 @@ public class WaveformView extends View {
     pGrid.setColor(colorGrid);
     pGrid.setStrokeWidth(1f);
 
+    // Шкала амплитуды
+    float density2 = c.getResources().getDisplayMetrics().density;
+    ampScaleWidthPx = (int) (32 * density2); // ширина шкалы ~32dp
+    pAmpScale.setColor(0xFF808080); // серый
+    pAmpScale.setStrokeWidth(1f);
+    pAmpText.setColor(0xFF808080);
+    pAmpText.setTextSize(9f * density2);
+    pHGrid.setColor(0x22FFFFFF); // очень прозрачный белый
+    pHGrid.setStrokeWidth(1f);
+
+    pScaleBg.setColor(0xAA0E0E10); // тёмный полупрозрачный фон
+    pScaleBg.setStyle(Paint.Style.FILL);
+
     pRuler.setColor(colorRuler);
     pRuler.setStyle(Paint.Style.FILL);
 
@@ -279,6 +300,10 @@ public class WaveformView extends View {
     this.activePlayFrame = 0;
     invalidatePeakCache();
     invalidate();
+  }
+
+  public void setZeroCrossingSnap(boolean enabled) {
+    this.zeroCrossingSnap = enabled;
   }
 
   public void updatePcm(float[] newPcm) {
@@ -531,6 +556,26 @@ public class WaveformView extends View {
       case MotionEvent.ACTION_CANCEL:
         removeCallbacks(longPressRunnable);
 
+        // Снап к нулю для выделения
+        if (zeroCrossingSnap && pcm != null && hasSelection()) {
+          int fStart = selStart;
+          int fEnd = selEnd;
+          if (fStart >= 0 && fStart < totalFrames) {
+            selStart = nearestZeroCross(fStart);
+          }
+          if (fEnd >= 0 && fEnd < totalFrames) {
+            selEnd = nearestZeroCross(fEnd);
+          }
+          if (selStart > selEnd) {
+            int t = selStart;
+            selStart = selEnd;
+            selEnd = t;
+          }
+          invalidate();
+          if (listener != null)
+            listener.onSelectionChanged(selStart, selEnd);
+        }
+
         if (e.getActionMasked() == MotionEvent.ACTION_UP && Math.abs(e.getX() - downX) < 8
             && Math.abs(e.getY() - downY) < 8 && e.getY() >= rulerHeightPx && !longPressActivated) {
 
@@ -649,6 +694,51 @@ public class WaveformView extends View {
     peakCacheFpp = fpp;
   }
 
+  /** Найти ближайший zero-crossing (по сумме L+R) в пределах 2048 фреймов. */
+  private int nearestZeroCross(int frame) {
+    if (pcm == null || totalFrames == 0)
+      return frame;
+    frame = Math.max(0, Math.min(totalFrames - 1, frame));
+    int search = Math.min(2048, totalFrames / 2);
+    int best = frame;
+    int bestDist = Integer.MAX_VALUE;
+    for (int d = 0; d <= search; d++) {
+      int a = frame - d;
+      int b = frame + d;
+      if (a >= 0 && isZeroCrossAt(a)) {
+        if (d < bestDist) {
+          bestDist = d;
+          best = a;
+        }
+      }
+      if (b < totalFrames && isZeroCrossAt(b)) {
+        if (d < bestDist) {
+          bestDist = d;
+          best = b;
+        }
+      }
+      if (bestDist <= 1)
+        break;
+    }
+    return best;
+  }
+
+  private boolean isZeroCrossAt(int frame) {
+    if (frame <= 0 || frame >= totalFrames)
+      return true;
+    float prevL = pcm[(frame - 1) * 2];
+    float prevR = pcm[(frame - 1) * 2 + 1];
+    float curL = pcm[frame * 2];
+    float curR = pcm[frame * 2 + 1];
+    float prevSum = prevL + prevR;
+    float curSum = curL + curR;
+    return (prevSum <= 0f && curSum >= 0f) || (prevSum >= 0f && curSum <= 0f);
+  }
+
+  public boolean isZeroCrossingSnap() {
+    return zeroCrossingSnap;
+  }
+
   @Override
   protected void onDraw(Canvas canvas) {
     int w = getWidth();
@@ -661,6 +751,10 @@ public class WaveformView extends View {
     int waveBottom = h;
     int waveH = waveBottom - waveTop;
     int centerY = waveTop + waveH / 2;
+
+    // Шкала справа (поверх волны)
+    int scaleW = ampScaleWidthPx;
+    int scaleX = w - scaleW; // левый край шкалы
 
     canvas.drawRect(0, 0, w, rulerH, pRuler);
     drawRuler(canvas, w, rulerH);
@@ -675,6 +769,16 @@ public class WaveformView extends View {
     if (peakCacheWidth != w || peakCacheStart != viewStartFrame
         || peakCacheFpp != viewFramesPerPixel) {
       buildPeakCache(w);
+    }
+
+    // Горизонтальные линии уровня
+    if (stereoView) {
+      drawHorizontalLevels(canvas, waveTop + waveH / 4, waveH * 0.25f - 2, waveTop,
+          waveTop + waveH / 2, 0, scaleX);
+      drawHorizontalLevels(canvas, waveTop + 3 * waveH / 4, waveH * 0.25f - 2, waveTop + waveH / 2,
+          waveBottom, 0, scaleX);
+    } else {
+      drawHorizontalLevels(canvas, centerY, waveH * 0.5f - 2, waveTop, waveBottom, 0, scaleX);
     }
 
     if (hasSelection()) {
@@ -796,15 +900,16 @@ public class WaveformView extends View {
       checkLx = 10;
       checkLy = waveTop + 10;
       drawCheckbox(canvas, checkLx, checkLy, channelL);
-      // Текст "L" рядом с галкой
       canvas.drawText("L", checkLx + checkSize + 6, checkLy + checkSize - 6, pChannelText);
 
       checkRx = 10;
       checkRy = waveTop + waveH / 2 + 10;
       drawCheckbox(canvas, checkRx, checkRy, channelR);
-      // Текст "R" рядом с галкой
       canvas.drawText("R", checkRx + checkSize + 6, checkRy + checkSize - 6, pChannelText);
     }
+
+    // Шкала амплитуды (справа, поверх волны)
+    drawAmpScale(canvas, scaleX, w, waveTop, waveBottom, waveH);
   }
 
   private void drawCheckbox(Canvas c, float x, float y, boolean checked) {
@@ -884,4 +989,74 @@ public class WaveformView extends View {
     canvas.drawCircle(x, cyBot, handleHalfPx, pSelBorder);
     canvas.drawLine(x, cyTop, x, cyBot, pSelBorder);
   }
+
+  /**
+   * Рисует горизонтальные линии уровня (0, -6, -12, -24, -48 dB) и подписи.
+   * 
+   * @param centerY центральная линия (0 амплитуды)
+   * @param halfH   половина высоты (где амплитуда = 1.0)
+   * @param top     верхняя граница области
+   * @param bottom  нижняя граница области
+   * @param x0      левый край
+   * @param x1      правый край
+   */
+  private void drawHorizontalLevels(Canvas canvas, int centerY, float halfH, int top, int bottom,
+      int x0, int x1) {
+    float[] levels = { 0f, 0.5f, 0.7f, 0.9f, 0.999f }; // амплитуды
+    String[] labels = { "-inf", "-6", "-3", "-1", "0" };
+
+    for (int i = 0; i < levels.length; i++) {
+      float amp = levels[i];
+      float dy = amp * halfH;
+
+      // Верхняя линия (положительная амплитуда)
+      float yTop = centerY - dy;
+      if (yTop >= top && yTop <= bottom) {
+        canvas.drawLine(x0, yTop, x1, yTop, pHGrid);
+      }
+      // Нижняя линия (отрицательная амплитуда)
+      float yBot = centerY + dy;
+      if (yBot >= top && yBot <= bottom) {
+        canvas.drawLine(x0, yBot, x1, yBot, pHGrid);
+      }
+    }
+  }
+
+  private void drawAmpScale(Canvas canvas, int scaleX, int w, int top, int bottom, int waveH) {
+    // Фон шкалы
+    canvas.drawRect(scaleX, top, w, bottom, pScaleBg);
+
+    int centerY = (top + bottom) / 2;
+    float halfH = waveH * 0.5f - 2;
+
+    // Для стерео — две половины
+    if (stereoView) {
+      drawScaleHalf(canvas, scaleX, w, top, top + waveH / 2, waveH * 0.25f - 2);
+      drawScaleHalf(canvas, scaleX, w, top + waveH / 2, bottom, waveH * 0.25f - 2);
+    } else {
+      drawScaleHalf(canvas, scaleX, w, top, bottom, halfH);
+    }
+  }
+
+  private void drawScaleHalf(Canvas canvas, int scaleX, int w, int top, int bottom, float halfH) {
+    int centerY = (top + bottom) / 2;
+    float[] levels = { 0f, 0.5f, 0.7f, 0.9f, 0.999f };
+    String[] labels = { "-inf", "-6", "-3", "-1", "0" };
+
+    for (int i = 0; i < levels.length; i++) {
+      float amp = levels[i];
+      float dy = amp * halfH;
+      float yTop = centerY - dy;
+      float yBot = centerY + dy;
+
+      if (yTop >= top && yTop <= bottom) {
+        canvas.drawLine(scaleX, yTop, scaleX + 6, yTop, pAmpScale);
+        canvas.drawText(labels[i], scaleX + 8, yTop + 3, pAmpText);
+      }
+      if (i > 0 && yBot >= top && yBot <= bottom) {
+        canvas.drawLine(scaleX, yBot, scaleX + 6, yBot, pAmpScale);
+      }
+    }
+  }
+
 }
