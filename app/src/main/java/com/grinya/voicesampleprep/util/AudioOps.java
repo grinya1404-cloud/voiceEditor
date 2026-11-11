@@ -348,8 +348,10 @@ public final class AudioOps {
 
   public static float[] toMonoSmart(float[] pcm) {
     int frames = pcm.length / 2;
+    if (frames == 0)
+      return new float[0];
 
-    // 1. Считаем корреляцию L и R (упрощённо, по всему массиву)
+    // 1. Считаем корреляцию L и R
     double sumLR = 0, sumL2 = 0, sumR2 = 0;
     for (int i = 0; i < pcm.length; i += 2) {
       sumLR += pcm[i] * pcm[i + 1];
@@ -360,6 +362,7 @@ public final class AudioOps {
     double correlation = denom > 1e-9 ? sumLR / denom : 0;
 
     float[] out = new float[frames];
+    float peak = 0f;
 
     if (correlation < 0) {
       // Противофаза: берём максимум по модулю (без гашения)
@@ -367,14 +370,27 @@ public final class AudioOps {
         float l = pcm[i * 2];
         float r = pcm[i * 2 + 1];
         out[i] = Math.abs(l) >= Math.abs(r) ? l : r;
+        if (Math.abs(out[i]) > peak)
+          peak = Math.abs(out[i]);
       }
     } else {
-      // Нормальное стерео: Half-Power (1/√2 ≈ 0.7071)
+      // Нормальное стерео: Half-Power (1/√2)
       float k = 0.7071f;
       for (int i = 0; i < frames; i++) {
         out[i] = (pcm[i * 2] + pcm[i * 2 + 1]) * k;
+        if (Math.abs(out[i]) > peak)
+          peak = Math.abs(out[i]);
       }
     }
+
+    // 2. Защита от клиппинга: если пик > 1.0, нормализуем до 1.0
+    if (peak > 1.0f) {
+      float mul = 1.0f / peak;
+      for (int i = 0; i < frames; i++) {
+        out[i] *= mul;
+      }
+    }
+
     return out;
   }
 
@@ -419,6 +435,49 @@ public final class AudioOps {
       if (applyR)
         out[idx + 1] *= g;
     }
+    return out;
+  }
+
+  public static float[] trimSilence(float[] pcm, float threshold, int channels) {
+    if (pcm.length == 0 || channels <= 0)
+      return pcm;
+    int total = pcm.length / channels;
+    int s = 0, e = total;
+
+    // Ищем первую не-тишину
+    for (int i = 0; i < total; i++) {
+      boolean silent = true;
+      for (int c = 0; c < channels; c++) {
+        if (Math.abs(pcm[i * channels + c]) >= threshold) {
+          silent = false;
+          break;
+        }
+      }
+      if (!silent) {
+        s = i;
+        break;
+      }
+    }
+
+    // Ищем последнюю не-тишину
+    for (int i = total - 1; i >= s; i--) {
+      boolean silent = true;
+      for (int c = 0; c < channels; c++) {
+        if (Math.abs(pcm[i * channels + c]) >= threshold) {
+          silent = false;
+          break;
+        }
+      }
+      if (!silent) {
+        e = i + 1;
+        break;
+      }
+    }
+
+    if (e <= s)
+      return new float[0];
+    float[] out = new float[(e - s) * channels];
+    System.arraycopy(pcm, s * channels, out, 0, out.length);
     return out;
   }
 

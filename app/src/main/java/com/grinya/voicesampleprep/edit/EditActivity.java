@@ -18,6 +18,7 @@ import com.grinya.voicesampleprep.audio.AudioPlayer;
 import com.grinya.voicesampleprep.model.AudioClip;
 // import com.grinya.voicesampleprep.model.MarkerStore;
 import com.grinya.voicesampleprep.model.AudioMeta;
+import com.grinya.voicesampleprep.util.AudioInfoDialog;
 import java.util.Locale;
 
 public class EditActivity extends AppCompatActivity
@@ -132,7 +133,9 @@ public class EditActivity extends AppCompatActivity
       }
     });
     findViewById(R.id.btnInfo).setOnClickListener(v -> {
-      com.grinya.voicesampleprep.util.AudioInfoDialog.show(this, clip);
+      int start = wave.hasSelection() ? wave.getSelStart() : -1;
+      int end = wave.hasSelection() ? wave.getSelEnd() : -1;
+      AudioInfoDialog.show(this, clip, start, end);
     });
     findViewById(R.id.btnExport).setOnClickListener(v -> {
       int selStart = wave.hasSelection() ? wave.getSelStart() : -1;
@@ -276,9 +279,12 @@ public class EditActivity extends AppCompatActivity
     });
 
     findViewById(R.id.btnAutoTrim).setOnClickListener(v -> {
-      // Порог -50 dB (около 0.003 амплитуды)
-      clip.autoTrim(0.003f);
-      wave.clearSelection(); // Сбрасываем выделение, так как длина изменилась
+      if (wave.hasSelection()) {
+        clip.autoTrim(wave.getSelStart(), wave.getSelEnd(), 0.001f, applyL(), applyR());
+      } else {
+        clip.autoTrim(0, clip.frameCount(), 0.001f, applyL(), applyR());
+      }
+      wave.clearSelection();
       refreshAfterChange();
       Toast.makeText(this, "Тишина обрезана", Toast.LENGTH_SHORT).show();
     });
@@ -335,11 +341,11 @@ public class EditActivity extends AppCompatActivity
       refreshAfterChange();
     });
     findViewById(R.id.btnInvert).setOnClickListener(v -> {
-      if (!wave.hasSelection()) {
-        Toast.makeText(this, "Выделите фрагмент", Toast.LENGTH_SHORT).show();
-        return;
+      if (wave.hasSelection()) {
+        clip.invertPhase(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
+      } else {
+        clip.invertPhase(0, clip.frameCount(), applyL(), applyR());
       }
-      clip.invertPhaseRange(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
       refreshAfterChange();
     });
     findViewById(R.id.btnMarker).setOnClickListener(v -> {

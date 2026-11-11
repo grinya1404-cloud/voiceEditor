@@ -49,42 +49,60 @@ public class AudioClip {
    * 
    * @param threshold Порог амплитуды (0..1). Например, 0.003f (это ~ -50 dB).
    */
-  public void autoTrim(float threshold) {
+  /**
+   * Автоматически обрезает тишину.
+   * 
+   * @param startFrame начальный фрейм (0, если весь файл)
+   * @param endFrame   конечный фрейм (frameCount(), если весь файл)
+   * @param threshold  порог амплитуды (0..1)
+   * @param applyL     учитывать левый канал
+   * @param applyR     учитывать правый канал
+   */
+  public void autoTrim(int startFrame, int endFrame, float threshold, boolean applyL,
+      boolean applyR) {
     if (pcm == null || pcm.length == 0)
       return;
 
-    int totalFrames = frameCount();
-    int startFrame = 0;
-    int endFrame = totalFrames;
+    int total = frameCount();
+    int s = Math.max(0, Math.min(startFrame, total));
+    int e = Math.max(s, Math.min(endFrame, total));
+    if (e <= s)
+      return;
 
-    // 1. Ищем первую не-тишину (с начала)
-    for (int i = 0; i < totalFrames; i++) {
-      float l = Math.abs(pcm[i * CHANNELS]);
-      float r = Math.abs(pcm[i * CHANNELS + 1]);
-      if (l > threshold || r > threshold) {
-        startFrame = i;
-        break;
-      }
-    }
+    // Вырезаем кусок
+    float[] range = AudioOps.trim(pcm, s, e);
 
-    // 2. Ищем последнюю не-тишину (с конца)
-    for (int i = totalFrames - 1; i >= startFrame; i--) {
-      float l = Math.abs(pcm[i * CHANNELS]);
-      float r = Math.abs(pcm[i * CHANNELS + 1]);
-      if (l > threshold || r > threshold) {
-        endFrame = i + 1;
-        break;
-      }
-    }
+    // Вычисляем каналы (1 или 2)
+    int ch = 2;
+    // (Если хочешь, чтобы для моно был 1 канал, добавь проверку, но у нас всегда стерео)
 
-    // Если нашли что обрезать — применяем
-    if (startFrame > 0 || endFrame < totalFrames) {
-      // Используем существующий метод trim
-      trim(startFrame, endFrame);
-    } else {
-      // Тишина не найдена (или файл полностью тихий)
-      // Ничего не делаем
+    // Применяем trimSilence
+    float[] trimmed = AudioOps.trimSilence(range, threshold, ch);
+
+    // Если ничего не обрезалось (тишина не найдена), выходим
+    if (trimmed.length == 0)
+      return;
+    if (trimmed.length == range.length)
+      return;
+
+    // Вставляем обратно (заменяем выделенный кусок на обрезанный)
+    float[] newPcm = new float[pcm.length - range.length + trimmed.length];
+    System.arraycopy(pcm, 0, newPcm, 0, s * 2);
+    System.arraycopy(trimmed, 0, newPcm, s * 2, trimmed.length);
+    System.arraycopy(pcm, e * 2, newPcm, (s * 2) + trimmed.length, (total - e) * 2);
+
+    pushHistory();
+    pcm = newPcm;
+
+    // Корректируем маркеры (удаляем те, что были внутри вырезанного)
+    List<Integer> newMarkers = new ArrayList<>();
+    for (int m : markers) {
+      if (m < s)
+        newMarkers.add(m);
+      else if (m >= e)
+        newMarkers.add(m - (range.length - trimmed.length) / 2);
     }
+    markers = newMarkers;
   }
 
   public void delete(int startFrame, int endFrame) {
@@ -167,6 +185,14 @@ public class AudioClip {
   }
 
   public void invertPhaseRange(int startFrame, int endFrame, boolean applyL, boolean applyR) {
+    pushHistory();
+    pcm = AudioOps.invertPhase(pcm, startFrame, endFrame, applyL, applyR);
+  }
+
+  /**
+   * Инвертирует фазу. Если выделения нет (selStart == -1), инвертирует весь файл.
+   */
+  public void invertPhase(int startFrame, int endFrame, boolean applyL, boolean applyR) {
     pushHistory();
     pcm = AudioOps.invertPhase(pcm, startFrame, endFrame, applyL, applyR);
   }

@@ -80,9 +80,16 @@ public class ExportActivity extends AppCompatActivity {
     }
 
     if (selStart >= 0 && selEnd > selStart) {
-      // если есть выделение — по умолчанию «один файл»
-      ((RadioButton) findViewById(R.id.rbSingle))
-          .setText("Один файл (выделение " + selStart + "–" + selEnd + ")");
+      // Считаем длительность выделения в миллисекундах
+      int durationMs = (selEnd - selStart) * 1000 / source.sampleRate;
+      int m = durationMs / 60000;
+      int s = (durationMs % 60000) / 1000;
+      int r = durationMs % 1000;
+      String timeStr = String.format(java.util.Locale.US, "%02d:%02d.%03d", m, s, r);
+
+      ((RadioButton) findViewById(R.id.rbSingle)).setText("Один файл (выделение " + timeStr + ")");
+    } else {
+      ((RadioButton) findViewById(R.id.rbSingle)).setText("Один файл (весь клип)");
     }
 
     if (source.markers.size() < 2) {
@@ -157,12 +164,19 @@ public class ExportActivity extends AppCompatActivity {
     // собираем список диапазонов [start, end)
     List<int[]> ranges = new ArrayList<>();
     if (byMarkers) {
-      List<Integer> all = new ArrayList<>();
-      all.add(0);
-      all.addAll(source.markers);
-      all.add(source.frameCount());
+      // Берем только маркеры (без начала и конца файла)
+      List<Integer> all = new ArrayList<>(source.markers);
+
+      // Если маркеров меньше 2, экспортировать нечего (нельзя построить интервал)
+      if (all.size() < 2) {
+        Toast.makeText(this, "Нужно минимум 2 маркера", Toast.LENGTH_SHORT).show();
+        return;
+      }
+
       java.util.TreeSet<Integer> ts = new java.util.TreeSet<>(all);
       Integer[] arr = ts.toArray(new Integer[0]);
+
+      // Строим интервалы между соседними маркерами
       for (int i = 0; i < arr.length - 1; i++) {
         if (arr[i + 1] > arr[i])
           ranges.add(new int[] { arr[i], arr[i + 1] });
@@ -288,50 +302,6 @@ public class ExportActivity extends AppCompatActivity {
     if (s == null || s.trim().isEmpty())
       return "clip";
     return s.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
-  }
-
-  /** Простая обрезка тишины по краям с порогом по амплитуде. */
-  private static float[] trimSilence(float[] pcm, float threshold, int channels) {
-    if (pcm.length == 0 || channels <= 0)
-      return pcm;
-    int total = pcm.length / channels;
-    int s = 0, e = total;
-
-    // Ищем первую не-тишину
-    for (int i = 0; i < total; i++) {
-      boolean silent = true;
-      for (int c = 0; c < channels; c++) {
-        if (Math.abs(pcm[i * channels + c]) >= threshold) {
-          silent = false;
-          break;
-        }
-      }
-      if (!silent) {
-        s = i;
-        break;
-      }
-    }
-
-    // Ищем последнюю не-тишину
-    for (int i = total - 1; i >= s; i--) {
-      boolean silent = true;
-      for (int c = 0; c < channels; c++) {
-        if (Math.abs(pcm[i * channels + c]) >= threshold) {
-          silent = false;
-          break;
-        }
-      }
-      if (!silent) {
-        e = i + 1;
-        break;
-      }
-    }
-
-    if (e <= s)
-      return new float[0];
-    float[] out = new float[(e - s) * channels];
-    System.arraycopy(pcm, s * channels, out, 0, out.length);
-    return out;
   }
 
   private String getUniqueName(androidx.documentfile.provider.DocumentFile dir, String baseName,

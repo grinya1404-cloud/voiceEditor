@@ -38,11 +38,11 @@ public final class WavWriter {
       data = com.grinya.voicesampleprep.util.Denoiser.denoiseStereo(data);
     }
 
-    // 2.5 Сведение
+    // 2.5 Сведение каналов (везде используем умное сведение)
     if (isTrueMono) {
-      data = AudioOps.toMonoSmart(data);
+      data = AudioOps.toMonoSmart(data); // 1 канал
     } else if (isStereoMono) {
-      float[] mono = AudioOps.toMonoSmart(data);
+      float[] mono = AudioOps.toMonoSmart(data); // умное сведение
       data = new float[mono.length * 2];
       for (int i = 0; i < mono.length; i++) {
         data[i * 2] = mono[i];
@@ -53,7 +53,7 @@ public final class WavWriter {
     // 3. Trim Silence (по итоговому сигналу)
     if (trimSilence) {
       int ch = isTrueMono ? 1 : 2;
-      data = trimSilence(data, 0.003f, ch);
+      data = AudioOps.trimSilence(data, 0.003f, ch); // <-- ИСПОЛЬЗУЕМ AudioOps
     }
 
     // 4. Normalize (по итоговому сигналу)
@@ -155,41 +155,5 @@ public final class WavWriter {
     out.write((v >> 8) & 0xFF);
     out.write((v >> 16) & 0xFF);
     out.write((v >> 24) & 0xFF);
-  }
-
-  private static float[] trimSilence(float[] pcm, float threshold, int channels) {
-    int total = pcm.length / channels;
-    int s = 0, e = total;
-    for (int i = 0; i < total; i++) {
-      boolean silent = true;
-      for (int c = 0; c < channels; c++) {
-        if (Math.abs(pcm[i * channels + c]) >= threshold) {
-          silent = false;
-          break;
-        }
-      }
-      if (!silent) {
-        s = i;
-        break;
-      }
-    }
-    for (int i = total - 1; i >= s; i--) {
-      boolean silent = true;
-      for (int c = 0; c < channels; c++) {
-        if (Math.abs(pcm[i * channels + c]) >= threshold) {
-          silent = false;
-          break;
-        }
-      }
-      if (!silent) {
-        e = i + 1;
-        break;
-      }
-    }
-    if (e <= s)
-      return new float[0];
-    float[] out = new float[(e - s) * channels];
-    System.arraycopy(pcm, s * channels, out, 0, out.length);
-    return out;
   }
 }

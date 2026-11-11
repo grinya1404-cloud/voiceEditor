@@ -173,8 +173,7 @@ public class BankActivity extends AppCompatActivity {
                 new Thread(() -> {
                   try {
                     AudioClip full = bankManager.loadClip(c.dir);
-                    runOnUiThread(() -> com.grinya.voicesampleprep.util.AudioInfoDialog
-                        .show(BankActivity.this, full));
+                    runOnUiThread(() -> com.grinya.voicesampleprep.util.AudioInfoDialog.show(BankActivity.this, full, -1, -1));
                   } catch (Exception e) {
                     runOnUiThread(() -> Toast.makeText(BankActivity.this,
                         "Ошибка: " + e.getMessage(), Toast.LENGTH_SHORT).show());
