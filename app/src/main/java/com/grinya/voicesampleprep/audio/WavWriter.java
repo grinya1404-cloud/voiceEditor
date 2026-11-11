@@ -23,17 +23,22 @@ public final class WavWriter {
    */
   public static void write(File f, float[] pcm, int srcRate, int dstRate, int bits,
       boolean isStereoMono, boolean isTrueMono, boolean normalize, boolean fade,
-      boolean trimSilence) throws IOException {
+      boolean trimSilence, boolean denoise) throws IOException {
     float[] data = pcm;
     int rate = srcRate;
 
-    // 1. Ресемплинг (стерео)
+    // 1. Ресемплинг
     if (dstRate != srcRate) {
       data = AudioOps.resample(data, srcRate, dstRate);
       rate = dstRate;
     }
 
-    // 2. Сведение
+    // 2. Denoise (шумодав) — ДО сведения каналов
+    if (denoise) {
+      data = com.grinya.voicesampleprep.util.Denoiser.denoiseStereo(data);
+    }
+
+    // 2.5 Сведение
     if (isTrueMono) {
       data = AudioOps.toMonoSmart(data);
     } else if (isStereoMono) {
@@ -126,6 +131,14 @@ public final class WavWriter {
           out.write(buf, 0, bi);
       }
     }
+  }
+
+  // Перегрузка для обратной совместимости (без denoise)
+  public static void write(File f, float[] pcm, int srcRate, int dstRate, int bits,
+      boolean isStereoMono, boolean isTrueMono, boolean normalize, boolean fade,
+      boolean trimSilence) throws IOException {
+    write(f, pcm, srcRate, dstRate, bits, isStereoMono, isTrueMono, normalize, fade, trimSilence,
+        false);
   }
 
   private static void writeAscii(BufferedOutputStream out, String s) throws IOException {

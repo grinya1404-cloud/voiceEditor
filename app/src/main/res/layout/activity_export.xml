@@ -173,6 +173,20 @@
                 android:textSize="14sp" />
 
             <CheckBox
+                android:id="@+id/cbDenoise"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/onSurface"
+                android:text="Шумоподавление (Denoise)" />
+
+            <CheckBox
+                android:id="@+id/cbTrimSilence"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/onSurface"
+                android:text="Обрезать тишину по краям (порог -50 dB)" />
+
+            <CheckBox
                 android:id="@+id/cbNormalize"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -186,12 +200,6 @@
                 android:textColor="@color/onSurface"
                 android:text="Fade 5 мс по краям (анти-щелчок)" />
 
-            <CheckBox
-                android:id="@+id/cbTrimSilence"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="@color/onSurface"
-                android:text="Обрезать тишину по краям (порог -50 dB)" />
 
             <!-- Имя -->
             <TextView

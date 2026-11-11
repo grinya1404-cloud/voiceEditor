@@ -146,6 +146,8 @@ public class ExportActivity extends AppCompatActivity {
     boolean isStereoMono = ((RadioButton) findViewById(R.id.rbStereoMono)).isChecked();
     boolean isTrueMono = ((RadioButton) findViewById(R.id.rbTrueMono)).isChecked();
 
+    boolean denoise = ((CheckBox) findViewById(R.id.cbDenoise)).isChecked();
+    final boolean finalDenoise = denoise;
     boolean normalize = ((CheckBox) findViewById(R.id.cbNormalize)).isChecked();
     boolean fade = ((CheckBox) findViewById(R.id.cbFade)).isChecked();
     boolean trimSilence = ((CheckBox) findViewById(R.id.cbTrimSilence)).isChecked();
