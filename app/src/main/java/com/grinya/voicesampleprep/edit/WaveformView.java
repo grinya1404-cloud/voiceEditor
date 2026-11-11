@@ -53,6 +53,7 @@ public class WaveformView extends View {
   private int totalFrames = 0;
   private int sampleRate = 48000;
   private List<Integer> markers;
+  private static final int DRAG_PLAYHEAD = 6;
 
   private double viewStartFrame = 0;
   private double viewFramesPerPixel = 1;
@@ -438,7 +439,13 @@ public class WaveformView extends View {
     gestureDetector.onTouchEvent(e);
 
     if (e.getActionMasked() == MotionEvent.ACTION_DOWN && e.getY() < rulerHeightPx) {
-      playheadFrame = xToFrame(e.getX());
+      int frame = xToFrame(e.getX());
+      // Прилипание к маркеру (в пределах 15px)
+      int marker = nearestMarker(frame, 15);
+      if (marker != -1) {
+        frame = marker;
+      }
+      playheadFrame = frame;
       invalidate();
       if (listener != null)
         listener.onPlayheadDragged(playheadFrame);
@@ -477,6 +484,13 @@ public class WaveformView extends View {
           }
         }
 
+        // Проверка на попадание в красную линию (playhead)
+        float playX = frameToX(playheadFrame) + paddingPx;
+        if (Math.abs(e.getX() - playX) <= 20) { // зона 20px
+          dragMode = DRAG_PLAYHEAD;
+          return true;
+        }
+
         if (hasSelection() && e.getY() >= rulerHeightPx) {
           // Прибавляем paddingPx, так как e.getX() — это координата экрана, а frameToX — внутри сдвинутого canvas
           float sxStart = frameToX(selStart) + paddingPx;
@@ -513,6 +527,20 @@ public class WaveformView extends View {
         if (!longPressActivated && Math.abs(e.getX() - downX) + Math.abs(e.getY() - downY) > 12) {
           removeCallbacks(longPressRunnable);
           downMarkerFrame = -1;
+        }
+
+        if (dragMode == DRAG_PLAYHEAD) {
+          int f = xToFrame(e.getX());
+          // Прилипание к маркеру
+          int marker = nearestMarker(f, 15);
+          if (marker != -1)
+            f = marker;
+
+          playheadFrame = f;
+          invalidate();
+          if (listener != null)
+            listener.onPlayheadDragged(playheadFrame);
+          return true;
         }
 
         if (dragMode == DRAG_SCROLL) {
@@ -561,7 +589,23 @@ public class WaveformView extends View {
       case MotionEvent.ACTION_UP:
       case MotionEvent.ACTION_CANCEL:
         removeCallbacks(longPressRunnable);
-
+        // Прилипание краёв выделения к маркерам
+        if (pcm != null && hasSelection()) {
+          int mStart = nearestMarker(selStart, 15);
+          int mEnd = nearestMarker(selEnd, 15);
+          if (mStart != -1)
+            selStart = mStart;
+          if (mEnd != -1)
+            selEnd = mEnd;
+          if (selStart > selEnd) {
+            int t = selStart;
+            selStart = selEnd;
+            selEnd = t;
+          }
+          if (listener != null)
+            listener.onSelectionChanged(selStart, selEnd);
+          invalidate();
+        }
         // Снап к нулю для выделения
         if (zeroCrossingSnap && pcm != null && hasSelection()) {
           int fStart = selStart;
@@ -589,8 +633,13 @@ public class WaveformView extends View {
             if (listener != null)
               listener.onMarkerTapped(downMarkerFrame);
           } else {
+            int frame = xToFrame(e.getX());
+            // Прилипание к маркеру
+            int marker = nearestMarker(frame, 15);
+            if (marker != -1)
+              frame = marker;
             if (listener != null)
-              listener.onTap(xToFrame(e.getX()));
+              listener.onTap(frame);
           }
         }
         dragMode = DRAG_NONE;
@@ -740,6 +789,26 @@ public class WaveformView extends View {
         break;
     }
     return best;
+  }
+
+  /** Найти ближайший маркер к указанному фрейму (в пределах tolerancePx пикселей). */
+  private int nearestMarker(int frame, int tolerancePx) {
+    if (markers == null || markers.isEmpty())
+      return -1;
+
+    float targetX = frameToX(frame);
+    int bestMarker = -1;
+    float bestDist = tolerancePx;
+
+    for (int m : markers) {
+      float mx = frameToX(m);
+      float dist = Math.abs(targetX - mx);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestMarker = m;
+      }
+    }
+    return bestMarker;
   }
 
   private boolean isZeroCrossAt(int frame) {

@@ -27,6 +27,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.List;
+import android.widget.EditText;
+import com.grinya.voicesampleprep.util.AudioInfoDialog;
 
 public class BankActivity extends AppCompatActivity {
 
@@ -167,22 +169,67 @@ public class BankActivity extends AppCompatActivity {
       h.itemView.setOnClickListener(v -> openClip(c));
       h.itemView.setOnLongClickListener(v -> {
         new AlertDialog.Builder(BankActivity.this).setTitle(c.name)
-            .setItems(new String[] { "Инфо", "Удалить" }, (d, which) -> {
+            .setItems(new String[] { "Переименовать", "Инфо", "Удалить" }, (d, which) -> {
               if (which == 0) {
-                // загружаем клип и показываем инфо
+                // --- ПЕРЕИМЕНОВАТЬ ---
+                EditText input = new EditText(BankActivity.this);
+                String nameOnly = c.name.endsWith(".wav") ? c.name.substring(0, c.name.length() - 4)
+                    : c.name;
+                input.setText(nameOnly);
+                input.setSelection(input.getText().length()); // Курсор в конец
+
+                new AlertDialog.Builder(BankActivity.this).setTitle("Новое имя").setView(input)
+                    .setPositiveButton("OK", (dd, ww) -> {
+                      String newName = input.getText().toString().trim();
+                      if (!newName.isEmpty() && c.dir != null) {
+                        String safe = newName.replaceAll("[\\\\/:*?\"<>|]", "_");
+                        File newFile = new File(c.dir.getParent(), safe + ".wav");
+
+                        // Проверяем, не существует ли уже такой файл
+                        if (newFile.exists()) {
+                          Toast.makeText(BankActivity.this, "Файл с таким именем уже есть",
+                              Toast.LENGTH_SHORT).show();
+                          return;
+                        }
+
+                        if (c.dir.renameTo(newFile)) {
+                          // Переименовываем и .meta файл
+                          File oldMeta = new File(c.dir.getAbsolutePath() + ".meta");
+                          File newMeta = new File(newFile.getAbsolutePath() + ".meta");
+                          if (oldMeta.exists())
+                            oldMeta.renameTo(newMeta);
+
+                          reload(); // Обновить список
+                        } else {
+                          Toast.makeText(BankActivity.this, "Ошибка переименования",
+                              Toast.LENGTH_SHORT).show();
+                        }
+                      }
+                    }).setNegativeButton("Отмена", null).show();
+
+              } else if (which == 1) {
+                // --- ИНФО ---
                 new Thread(() -> {
                   try {
                     AudioClip full = bankManager.loadClip(c.dir);
-                    runOnUiThread(() -> com.grinya.voicesampleprep.util.AudioInfoDialog.show(BankActivity.this, full, -1, -1));
+                    runOnUiThread(() -> AudioInfoDialog.show(BankActivity.this, full, -1, -1));
                   } catch (Exception e) {
-                    runOnUiThread(() -> Toast.makeText(BankActivity.this,
-                        "Ошибка: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                    runOnUiThread(() -> Toast
+                        .makeText(BankActivity.this, "Ошибка загрузки", Toast.LENGTH_SHORT).show());
                   }
                 }).start();
               } else {
-                if (c.dir != null)
-                  c.dir.delete();
-                reload();
+                // --- УДАЛИТЬ ---
+                new AlertDialog.Builder(BankActivity.this).setTitle("Удалить клип?")
+                    .setMessage(c.name).setPositiveButton("Удалить", (dd, ww) -> {
+                      if (c.dir != null)
+                        c.dir.delete();
+                      // Удаляем и .meta
+                      File meta = new File(c.dir.getAbsolutePath() + ".meta");
+                      if (meta.exists())
+                        meta.delete();
+                      reload();
+                    }).setNegativeButton("Отмена", null).show();
               }
             }).show();
         return true;
