@@ -85,7 +85,7 @@ public class WaveformView extends View {
   private final Paint pCheckBg = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final Paint pChannelText = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final Paint pScaleBg = new Paint();
-
+  private final Paint pEmpty = new Paint();
   private final Path wavePath = new Path();
 
   private GestureDetector gestureDetector;
@@ -202,6 +202,9 @@ public class WaveformView extends View {
 
     pGrid.setColor(colorGrid);
     pGrid.setStrokeWidth(1f);
+
+    pEmpty.setColor(0xAA000000); // Полупрозрачный черный
+    pEmpty.setStyle(Paint.Style.FILL);
 
     // Шкала амплитуды
     float density2 = c.getResources().getDisplayMetrics().density;
@@ -611,15 +614,22 @@ public class WaveformView extends View {
       viewStartFrame = 0;
       return;
     }
-    // Видимая область для волны (минус отступы)
+
     int visibleWidth = getWidth() - 2 * paddingPx;
     if (visibleWidth <= 0)
       return;
 
     double visibleFrames = visibleWidth * viewFramesPerPixel;
-    double maxStart = Math.max(0, totalFrames - visibleFrames);
-    if (viewStartFrame < 0)
-      viewStartFrame = 0;
+
+    // Левый предел: разрешаем уехать в пустоту на пол-экрана
+    double minStart = -visibleFrames / 2.0;
+
+    // Правый предел: разрешаем уехать вправо на пол-экрана ЗА КОНЕЦ файла
+    double baseMaxStart = Math.max(0, totalFrames - visibleFrames);
+    double maxStart = baseMaxStart + (visibleFrames / 2.0);
+
+    if (viewStartFrame < minStart)
+      viewStartFrame = minStart;
     if (viewStartFrame > maxStart)
       viewStartFrame = maxStart;
   }
@@ -776,7 +786,7 @@ public class WaveformView extends View {
     drawRuler(canvas, waveWidth, rulerH);
 
     if (pcm == null || totalFrames == 0) {
-      canvas.drawLine(0, centerY, waveWidth, centerY, pCenter);
+      drawCenterLine(canvas, centerY, waveWidth);
       canvas.restore(); // Обязательно возвращаем canvas
       // Шкалу можно нарисовать и здесь, но она не нужна для пустого файла
       return;
@@ -784,19 +794,44 @@ public class WaveformView extends View {
 
     drawGrid(canvas, waveWidth, waveTop, waveBottom);
 
+    // --- Затемнение пустоты (до и после файла) ---
+
+    // Слева (до начала файла)
+    float zeroX = frameToX(0);
+    if (zeroX > 0) {
+      canvas.drawRect(0, waveTop, zeroX, waveBottom, pEmpty);
+    }
+
+    // Справа (после конца файла)
+    float endX = frameToX(totalFrames);
+    if (endX < waveWidth) {
+      canvas.drawRect(endX, waveTop, waveWidth, waveBottom, pEmpty);
+    }
+    // ---------------------------------------------
+
     if (peakCacheWidth != waveWidth || peakCacheStart != viewStartFrame
         || peakCacheFpp != viewFramesPerPixel) {
       buildPeakCache(waveWidth); // Передаем waveWidth!
     }
 
     // Горизонтальные линии уровня
-    if (stereoView) {
-      drawHorizontalLevels(canvas, waveTop + waveH / 4, waveH * 0.25f - 2, waveTop,
-          waveTop + waveH / 2, 0, waveWidth); // waveWidth вместо scaleX
-      drawHorizontalLevels(canvas, waveTop + 3 * waveH / 4, waveH * 0.25f - 2, waveTop + waveH / 2,
-          waveBottom, 0, waveWidth); // waveWidth вместо scaleX
-    } else {
-      drawHorizontalLevels(canvas, centerY, waveH * 0.5f - 2, waveTop, waveBottom, 0, waveWidth);
+    // Рассчитываем реальные границы видимой части файла
+    zeroX = frameToX(0);
+    endX = frameToX(totalFrames);
+    int startX = (int) Math.max(0, zeroX);
+    int endXInt = (int) Math.min(waveWidth, endX);
+
+    // Горизонтальные линии уровня (только в зоне видимости файла)
+    if (startX < endXInt) {
+      if (stereoView) {
+        drawHorizontalLevels(canvas, waveTop + waveH / 4, waveH * 0.25f - 2, waveTop,
+            waveTop + waveH / 2, startX, endXInt);
+        drawHorizontalLevels(canvas, waveTop + 3 * waveH / 4, waveH * 0.25f - 2,
+            waveTop + waveH / 2, waveBottom, startX, endXInt);
+      } else {
+        drawHorizontalLevels(canvas, centerY, waveH * 0.5f - 2, waveTop, waveBottom, startX,
+            endXInt);
+      }
     }
 
     if (hasSelection()) {
@@ -843,7 +878,7 @@ public class WaveformView extends View {
         canvas.drawPath(wavePath, pWaveFill);
         canvas.drawPath(wavePath, pWave);
 
-        canvas.drawLine(0, centerY, waveWidth, centerY, pCenter); // waveWidth!
+        drawCenterLine(canvas, centerY, waveWidth);
       } else {
         float halfH = waveH * 0.5f - 2;
         wavePath.reset();
@@ -863,7 +898,7 @@ public class WaveformView extends View {
         wavePath.close();
         canvas.drawPath(wavePath, pWaveFill);
         canvas.drawPath(wavePath, pWave);
-        canvas.drawLine(0, centerY, waveWidth, centerY, pCenter); // waveWidth!
+        drawCenterLine(canvas, centerY, waveWidth);
       }
     }
 
@@ -915,10 +950,13 @@ public class WaveformView extends View {
     }
 
     // Рисуем ограничители (края файла) ВНУТРИ сдвинутого canvas
-    canvas.drawLine(0, waveTop, 0, waveBottom, pCenter); // Левый край
-    canvas.drawLine(waveWidth, waveTop, waveWidth, waveBottom, pCenter); // Правый край
+    // canvas.drawLine(0, waveTop, 0, waveBottom, pCenter); // Левый край
+    // canvas.drawLine(waveWidth, waveTop, waveWidth, waveBottom, pCenter); // Правый край
 
     canvas.restore(); // 3. Возвращаем canvas обратно
+
+    // 4. Шкалу амплитуды рисуем ПОСЛЕ restore (она не должна сдвигаться)
+    drawAmpScale(canvas, scaleX, w, waveTop, waveBottom, waveH);
 
     // --- ЧЕКБОКСЫ ПОВЕРХ ОТСТУПА (ВНЕ СДВИНУТОГО CANVAS) ---
     if (stereoView) {
@@ -936,8 +974,6 @@ public class WaveformView extends View {
       canvas.drawText("R", checkRx - 20, checkRy + checkSize - 6, pChannelText);
     }
 
-    // 4. Шкалу амплитуды рисуем ПОСЛЕ restore (она не должна сдвигаться)
-    drawAmpScale(canvas, scaleX, w, waveTop, waveBottom, waveH);
   }
 
   private void drawCheckbox(Canvas c, float x, float y, boolean checked) {
@@ -971,6 +1007,9 @@ public class WaveformView extends View {
     double endSec = (viewStartFrame + w * viewFramesPerPixel) / (double) sampleRate;
 
     for (double t = firstMark; t <= endSec; t += step) {
+      // Пропускаем метки, которые находятся за пределами файла
+      if (t < 0 || t * sampleRate > totalFrames)
+        continue;
       float x = (float) (((t * sampleRate) - viewStartFrame) / viewFramesPerPixel);
       if (x < 0 || x > w)
         continue;
@@ -1003,6 +1042,9 @@ public class WaveformView extends View {
     double endSec = (viewStartFrame + w * viewFramesPerPixel) / (double) sampleRate;
 
     for (double t = firstMark; t <= endSec; t += step) {
+      // Пропускаем метки, которые находятся за пределами файла
+      if (t < 0 || t * sampleRate > totalFrames)
+        continue;
       float x = (float) (((t * sampleRate) - viewStartFrame) / viewFramesPerPixel);
       if (x < 0 || x > w)
         continue;
@@ -1047,6 +1089,22 @@ public class WaveformView extends View {
       if (yBot >= top && yBot <= bottom) {
         canvas.drawLine(x0, yBot, x1, yBot, pHGrid);
       }
+    }
+  }
+
+  private void drawCenterLine(Canvas canvas, int centerY, int waveWidth) {
+    float zeroX = frameToX(0);
+    float endX = frameToX(totalFrames);
+
+    // Если начало файла уехало за левый край (zeroX < 0),
+    // то видимая часть файла начинается с 0.
+    // Если начало файла правее 0 (zeroX > 0), то линия должна начинаться с zeroX.
+    float startDraw = Math.max(0, zeroX);
+    float endDraw = Math.min(waveWidth, endX);
+
+    // Дополнительная проверка: если startDraw > endDraw, значит, файла вообще не видно
+    if (startDraw < endDraw) {
+      canvas.drawLine(startDraw, centerY, endDraw, centerY, pCenter);
     }
   }
 
