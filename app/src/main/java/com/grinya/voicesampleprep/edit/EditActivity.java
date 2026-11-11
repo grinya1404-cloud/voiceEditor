@@ -315,6 +315,15 @@ public class EditActivity extends AppCompatActivity
         }
       }).start();
     });
+    findViewById(R.id.btnMono).setOnClickListener(v -> {
+      if (wave.hasSelection()) {
+        clip.mixToMonoRange(wave.getSelStart(), wave.getSelEnd());
+      } else {
+        clip.mixToMonoRange(0, clip.frameCount());
+      }
+      refreshAfterChange();
+      Toast.makeText(this, "Сведено в моно", Toast.LENGTH_SHORT).show();
+    });
     findViewById(R.id.btnFadeIn).setOnClickListener(v -> showFadeDialog(true));
     findViewById(R.id.btnFadeOut).setOnClickListener(v -> showFadeDialog(false));
     findViewById(R.id.btnReverse).setOnClickListener(v -> {

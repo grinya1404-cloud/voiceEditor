@@ -253,6 +253,13 @@
                 android:text="@string/denoise" />
 
             <Button
+                android:id="@+id/btnMono"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/to_mono" />
+
+            <Button
                 android:id="@+id/btnFadeIn"
                 style="?android:attr/buttonStyleSmall"
                 android:layout_width="wrap_content"

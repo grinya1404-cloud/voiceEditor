@@ -37,4 +37,5 @@
     <string name="paste_1">Paste</string>
     <string name="copy_1">Copy</string>
     <string name="auto_trim">Auto-Trim</string>
+    <string name="to_mono">To Mono</string>
 </resources>

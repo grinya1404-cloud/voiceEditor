@@ -297,6 +297,30 @@ public class AudioClip {
     }
   }
 
+  /**
+   * Сводит выделенный фрагмент в моно, дублируя результат в L и R.
+   */
+  public void mixToMonoRange(int startFrame, int endFrame) {
+    pushHistory();
+    int total = frameCount();
+    int s = Math.max(0, Math.min(startFrame, total));
+    int e = Math.max(s, Math.min(endFrame, total));
+    if (e <= s)
+      return;
+
+    // Вырезаем кусок
+    float[] range = AudioOps.trim(pcm, s, e);
+
+    // Сводим в моно (умный алгоритм)
+    float[] mono = AudioOps.toMonoSmart(range);
+
+    // Дублируем в оба канала
+    for (int i = 0; i < mono.length; i++) {
+      pcm[(s + i) * 2] = mono[i];
+      pcm[(s + i) * 2 + 1] = mono[i];
+    }
+  }
+
   /** Пиковая нормализация диапазона к target. Остальное не трогаем. */
   public void normalizeRangePeak(int startFrame, int endFrame, float target) {
     pushHistory();

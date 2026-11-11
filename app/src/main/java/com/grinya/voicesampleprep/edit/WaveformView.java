@@ -478,8 +478,9 @@ public class WaveformView extends View {
         }
 
         if (hasSelection() && e.getY() >= rulerHeightPx) {
-          float sxStart = frameToX(selStart);
-          float sxEnd = frameToX(selEnd);
+          // Прибавляем paddingPx, так как e.getX() — это координата экрана, а frameToX — внутри сдвинутого canvas
+          float sxStart = frameToX(selStart) + paddingPx;
+          float sxEnd = frameToX(selEnd) + paddingPx;
           if (Math.abs(e.getX() - sxStart) <= handleHalfPx * 2) {
             dragMode = DRAG_SEL_START;
             return true;
@@ -493,7 +494,7 @@ public class WaveformView extends View {
         downMarkerFrame = -1;
         if (markers != null) {
           for (int m : markers) {
-            float mx = frameToX(m);
+            float mx = frameToX(m) + paddingPx; // + paddingPx
             if (e.getX() >= mx - 20 && e.getX() <= mx + markerFlagW + 20) {
               downMarkerFrame = m;
               break;
@@ -601,7 +602,8 @@ public class WaveformView extends View {
   }
 
   private int xToFrame(float x) {
-    double f = viewStartFrame + x * viewFramesPerPixel;
+    // Вычитаем paddingPx, так как волна сдвинута вправо
+    double f = viewStartFrame + (x - paddingPx) * viewFramesPerPixel;
     return Math.max(0, Math.min(totalFrames, (int) Math.round(f)));
   }
 
@@ -841,76 +843,76 @@ public class WaveformView extends View {
       canvas.drawRect(sx0, waveTop, sx1, waveBottom, pSel);
     }
 
-if (peakMin != null && peakMax != null) {
-  if (stereoView) {
-    float halfH = waveH * 0.25f - 2;
-    int topCenter = waveTop + waveH / 4;
-    int botCenter = waveTop + 3 * waveH / 4;
+    if (peakMin != null && peakMax != null) {
+      if (stereoView) {
+        float halfH = waveH * 0.25f - 2;
+        int topCenter = waveTop + waveH / 4;
+        int botCenter = waveTop + 3 * waveH / 4;
 
-    // Рисуем левый канал (L) только в пределах файла
-    if (startX < endXInt) {
-      wavePath.reset();
-      for (int x = startX; x < endXInt; x++) {
-        float y = topCenter - peakMax[x] * halfH;
-        if (x == startX)
-          wavePath.moveTo(x, y);
-        else
-          wavePath.lineTo(x, y);
-      }
-      for (int x = endXInt - 1; x >= startX; x--) {
-        float y = topCenter - peakMin[x] * halfH;
-        wavePath.lineTo(x, y);
-      }
-      wavePath.close();
-      canvas.drawPath(wavePath, pWaveFill);
-      canvas.drawPath(wavePath, pWave);
-    }
+        // Рисуем левый канал (L) только в пределах файла
+        if (startX < endXInt) {
+          wavePath.reset();
+          for (int x = startX; x < endXInt; x++) {
+            float y = topCenter - peakMax[x] * halfH;
+            if (x == startX)
+              wavePath.moveTo(x, y);
+            else
+              wavePath.lineTo(x, y);
+          }
+          for (int x = endXInt - 1; x >= startX; x--) {
+            float y = topCenter - peakMin[x] * halfH;
+            wavePath.lineTo(x, y);
+          }
+          wavePath.close();
+          canvas.drawPath(wavePath, pWaveFill);
+          canvas.drawPath(wavePath, pWave);
+        }
 
-    // Рисуем правый канал (R) только в пределах файла
-    if (startX < endXInt) {
-      wavePath.reset();
-      for (int x = startX; x < endXInt; x++) {
-        float y = botCenter - peakMaxR[x] * halfH;
-        if (x == startX)
-          wavePath.moveTo(x, y);
-        else
-          wavePath.lineTo(x, y);
-      }
-      for (int x = endXInt - 1; x >= startX; x--) {
-        float y = botCenter - peakMinR[x] * halfH;
-        wavePath.lineTo(x, y);
-      }
-      wavePath.close();
-      canvas.drawPath(wavePath, pWaveFill);
-      canvas.drawPath(wavePath, pWave);
-    }
+        // Рисуем правый канал (R) только в пределах файла
+        if (startX < endXInt) {
+          wavePath.reset();
+          for (int x = startX; x < endXInt; x++) {
+            float y = botCenter - peakMaxR[x] * halfH;
+            if (x == startX)
+              wavePath.moveTo(x, y);
+            else
+              wavePath.lineTo(x, y);
+          }
+          for (int x = endXInt - 1; x >= startX; x--) {
+            float y = botCenter - peakMinR[x] * halfH;
+            wavePath.lineTo(x, y);
+          }
+          wavePath.close();
+          canvas.drawPath(wavePath, pWaveFill);
+          canvas.drawPath(wavePath, pWave);
+        }
 
-    drawCenterLine(canvas, centerY, waveWidth);
-  } else {
-    // Моно-режим
-    float halfH = waveH * 0.5f - 2;
-    if (startX < endXInt) {
-      wavePath.reset();
-      for (int x = startX; x < endXInt; x++) {
-        float max = Math.max(peakMax[x], peakMaxR[x]);
-        float y = centerY - max * halfH;
-        if (x == startX)
-          wavePath.moveTo(x, y);
-        else
-          wavePath.lineTo(x, y);
+        drawCenterLine(canvas, centerY, waveWidth);
+      } else {
+        // Моно-режим
+        float halfH = waveH * 0.5f - 2;
+        if (startX < endXInt) {
+          wavePath.reset();
+          for (int x = startX; x < endXInt; x++) {
+            float max = Math.max(peakMax[x], peakMaxR[x]);
+            float y = centerY - max * halfH;
+            if (x == startX)
+              wavePath.moveTo(x, y);
+            else
+              wavePath.lineTo(x, y);
+          }
+          for (int x = endXInt - 1; x >= startX; x--) {
+            float min = Math.min(peakMin[x], peakMinR[x]);
+            float y = centerY - min * halfH;
+            wavePath.lineTo(x, y);
+          }
+          wavePath.close();
+          canvas.drawPath(wavePath, pWaveFill);
+          canvas.drawPath(wavePath, pWave);
+        }
+        drawCenterLine(canvas, centerY, waveWidth);
       }
-      for (int x = endXInt - 1; x >= startX; x--) {
-        float min = Math.min(peakMin[x], peakMinR[x]);
-        float y = centerY - min * halfH;
-        wavePath.lineTo(x, y);
-      }
-      wavePath.close();
-      canvas.drawPath(wavePath, pWaveFill);
-      canvas.drawPath(wavePath, pWave);
     }
-    drawCenterLine(canvas, centerY, waveWidth);
-  }
-}
 
     if (hasSelection()) {
       float sx0 = frameToX(selStart);
@@ -1111,7 +1113,8 @@ if (peakMin != null && peakMax != null) {
     // Если начало файла правее 0 (zeroX > 0), то линия должна начинаться с zeroX.
     float startDraw = Math.max(0, zeroX);
     float endDraw = Math.min(waveWidth, endX);
-android.util.Log.d("WAVE", "drawCenterLine: zeroX=" + zeroX + " endX=" + endX + " startDraw=" + startDraw + " endDraw=" + endDraw);
+    android.util.Log.d("WAVE", "drawCenterLine: zeroX=" + zeroX + " endX=" + endX + " startDraw="
+        + startDraw + " endDraw=" + endDraw);
     // Дополнительная проверка: если startDraw > endDraw, значит, файла вообще не видно
     if (startDraw < endDraw) {
       canvas.drawLine(startDraw, centerY, endDraw, centerY, pCenter);
