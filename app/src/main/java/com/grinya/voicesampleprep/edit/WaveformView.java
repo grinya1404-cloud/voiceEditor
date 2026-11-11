@@ -794,19 +794,6 @@ public class WaveformView extends View {
 
     drawGrid(canvas, waveWidth, waveTop, waveBottom);
 
-    // --- Затемнение пустоты (до и после файла) ---
-
-    // Слева (до начала файла)
-    float zeroX = frameToX(0);
-    if (zeroX > 0) {
-      canvas.drawRect(0, waveTop, zeroX, waveBottom, pEmpty);
-    }
-
-    // Справа (после конца файла)
-    float endX = frameToX(totalFrames);
-    if (endX < waveWidth) {
-      canvas.drawRect(endX, waveTop, waveWidth, waveBottom, pEmpty);
-    }
     // ---------------------------------------------
 
     if (peakCacheWidth != waveWidth || peakCacheStart != viewStartFrame
@@ -816,8 +803,8 @@ public class WaveformView extends View {
 
     // Горизонтальные линии уровня
     // Рассчитываем реальные границы видимой части файла
-    zeroX = frameToX(0);
-    endX = frameToX(totalFrames);
+    float zeroX = frameToX(0);
+    float endX = frameToX(totalFrames);
     int startX = (int) Math.max(0, zeroX);
     int endXInt = (int) Math.min(waveWidth, endX);
 
@@ -832,6 +819,20 @@ public class WaveformView extends View {
         drawHorizontalLevels(canvas, centerY, waveH * 0.5f - 2, waveTop, waveBottom, startX,
             endXInt);
       }
+    }
+
+    // --- Затемнение пустоты (до и после файла) ---
+
+    // Слева (до начала файла)
+    // float zeroX = frameToX(0);
+    if (zeroX > 0) {
+      canvas.drawRect(0, waveTop, zeroX, waveBottom, pEmpty);
+    }
+
+    // Справа (после конца файла)
+    // float endX = frameToX(totalFrames);
+    if (endX < waveWidth) {
+      canvas.drawRect(endX, waveTop, waveWidth, waveBottom, pEmpty);
     }
 
     if (hasSelection()) {
@@ -1101,7 +1102,7 @@ public class WaveformView extends View {
     // Если начало файла правее 0 (zeroX > 0), то линия должна начинаться с zeroX.
     float startDraw = Math.max(0, zeroX);
     float endDraw = Math.min(waveWidth, endX);
-
+android.util.Log.d("WAVE", "drawCenterLine: zeroX=" + zeroX + " endX=" + endX + " startDraw=" + startDraw + " endDraw=" + endDraw);
     // Дополнительная проверка: если startDraw > endDraw, значит, файла вообще не видно
     if (startDraw < endDraw) {
       canvas.drawLine(startDraw, centerY, endDraw, centerY, pCenter);
