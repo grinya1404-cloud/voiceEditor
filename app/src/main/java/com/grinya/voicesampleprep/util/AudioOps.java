@@ -378,4 +378,48 @@ public final class AudioOps {
     return out;
   }
 
+  public static float[] fadeInRange(float[] pcm, int startFrame, int endFrame, int fadeFrames,
+      boolean applyL, boolean applyR) {
+    int ch = 2;
+    int total = pcm.length / ch;
+    int s = Math.max(0, Math.min(startFrame, total));
+    int e = Math.max(s, Math.min(endFrame, total));
+    int n = Math.min(fadeFrames, e - s);
+    if (n <= 0)
+      return pcm.clone();
+
+    float[] out = pcm.clone();
+    for (int i = 0; i < n; i++) {
+      float g = (float) i / n;
+      int idx = (s + i) * ch;
+      if (applyL)
+        out[idx] *= g;
+      if (applyR)
+        out[idx + 1] *= g;
+    }
+    return out;
+  }
+
+  public static float[] fadeOutRange(float[] pcm, int startFrame, int endFrame, int fadeFrames,
+      boolean applyL, boolean applyR) {
+    int ch = 2;
+    int total = pcm.length / ch;
+    int s = Math.max(0, Math.min(startFrame, total));
+    int e = Math.max(s, Math.min(endFrame, total));
+    int n = Math.min(fadeFrames, e - s);
+    if (n <= 0)
+      return pcm.clone();
+
+    float[] out = pcm.clone();
+    for (int i = 0; i < n; i++) {
+      float g = 1f - (float) i / n;
+      int idx = (e - n + i) * ch;
+      if (applyL)
+        out[idx] *= g;
+      if (applyR)
+        out[idx + 1] *= g;
+    }
+    return out;
+  }
+
 }

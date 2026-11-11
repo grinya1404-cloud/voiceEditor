@@ -261,40 +261,13 @@ public class AudioClip {
   public void fadeInRange(int startFrame, int endFrame, int fadeFrames, boolean applyL,
       boolean applyR) {
     pushHistory();
-    // (тут цикл как в AudioOps.fadeIn, но с s/e)
-    int total = frameCount();
-    int s = Math.max(0, Math.min(startFrame, total));
-    int e = Math.max(s, Math.min(endFrame, total));
-    int n = Math.min(fadeFrames, e - s);
-    if (n <= 0)
-      return;
-    for (int i = 0; i < n; i++) {
-      float g = (float) i / n;
-      int idx = (s + i) * CHANNELS;
-      if (applyL)
-        pcm[idx] *= g;
-      if (applyR)
-        pcm[idx + 1] *= g;
-    }
+    pcm = AudioOps.fadeInRange(pcm, startFrame, endFrame, fadeFrames, applyL, applyR);
   }
 
   public void fadeOutRange(int startFrame, int endFrame, int fadeFrames, boolean applyL,
       boolean applyR) {
     pushHistory();
-    int total = frameCount();
-    int s = Math.max(0, Math.min(startFrame, total));
-    int e = Math.max(s, Math.min(endFrame, total));
-    int n = Math.min(fadeFrames, e - s);
-    if (n <= 0)
-      return;
-    for (int i = 0; i < n; i++) {
-      float g = 1f - (float) i / n;
-      int idx = (e - n + i) * CHANNELS;
-      if (applyL)
-        pcm[idx] *= g;
-      if (applyR)
-        pcm[idx + 1] *= g;
-    }
+    pcm = AudioOps.fadeOutRange(pcm, startFrame, endFrame, fadeFrames, applyL, applyR);
   }
 
   /**
