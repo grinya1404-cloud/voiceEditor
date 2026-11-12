@@ -201,68 +201,55 @@ public class EditActivity extends AppCompatActivity
   }
 
   private void wireTools() {
+    wireEditTools();
+    wireEffectTools();
+    wireProcessTools();
+  }
+
+  private void wireEditTools() {
     findViewById(R.id.btnTrim).setOnClickListener(v -> {
       if (!requireSelection())
         return;
       clip.trim(wave.getSelStart(), wave.getSelEnd());
-      wave.clearSelection(); // снятие выделения
+      wave.clearSelection();
       refreshAfterChange();
     });
-    // findViewById(R.id.btnCut).setOnClickListener(v -> {
-    // if (!requireSelection())
-    // return;
-    // clip.delete(wave.getSelStart(), wave.getSelEnd());
-    // wave.clearSelection(); // снятие выделения
-    // refreshAfterChange();
-    // });
-    // --- CUT (Вырезать) ---
+
     findViewById(R.id.btnCut).setOnClickListener(v -> {
       if (!requireSelection())
         return;
       int s = wave.getSelStart();
       int e = wave.getSelEnd();
-
-      // 1. Копируем в буфер
       clipboard = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, s, e);
-
-      // 2. Удаляем из файла
       clip.delete(s, e);
-      wave.clearSelection(); // Сбрасываем выделение, так как координаты сместились
+      wave.clearSelection();
       refreshAfterChange();
       Toast.makeText(this, "Вырезано", Toast.LENGTH_SHORT).show();
     });
 
-    // --- COPY (Копировать) ---
     findViewById(R.id.btnCopy).setOnClickListener(v -> {
       if (!requireSelection())
         return;
       int s = wave.getSelStart();
       int e = wave.getSelEnd();
-
       clipboard = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, s, e);
       Toast.makeText(this, "Скопировано", Toast.LENGTH_SHORT).show();
-      // Файл не меняется, выделение можно оставить, Undo не нужен
     });
 
-    // --- PASTE (Вставить) ---
     findViewById(R.id.btnPaste).setOnClickListener(v -> {
       if (clipboard == null || clipboard.length == 0) {
         Toast.makeText(this, "Буфер пуст", Toast.LENGTH_SHORT).show();
         return;
       }
-
-      int start = player.getCurrentFrame(); // Курсор
+      int start = player.getCurrentFrame();
       int selStart = wave.hasSelection() ? wave.getSelStart() : start;
       int selEnd = wave.hasSelection() ? wave.getSelEnd() : start;
-
-      // Вставляем (метод insert сам заменит выделение, если оно есть)
       clip.insert(clipboard, start, selStart, selEnd);
-
-      // После вставки выделение лучше сбросить (длина файла изменилась)
       wave.clearSelection();
       refreshAfterChange();
       Toast.makeText(this, "Вставлено", Toast.LENGTH_SHORT).show();
     });
+
     findViewById(R.id.btnInsert).setOnClickListener(v -> {
       Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
       i.addCategory(Intent.CATEGORY_OPENABLE);
@@ -271,6 +258,9 @@ public class EditActivity extends AppCompatActivity
           "audio/mp4", "audio/aac", "audio/flac", "audio/x-flac", "audio/*" });
       startActivityForResult(i, REQ_INSERT);
     });
+  }
+
+  private void wireEffectTools() {
     findViewById(R.id.btnSilence).setOnClickListener(v -> {
       if (!requireSelection())
         return;
@@ -278,60 +268,11 @@ public class EditActivity extends AppCompatActivity
       refreshAfterChange();
     });
 
-    findViewById(R.id.btnAutoTrim).setOnClickListener(v -> {
-      if (wave.hasSelection()) {
-        clip.autoTrim(wave.getSelStart(), wave.getSelEnd(), 0.001f, applyL(), applyR());
-      } else {
-        clip.autoTrim(0, clip.frameCount(), 0.001f, applyL(), applyR());
-      }
-      wave.clearSelection();
-      refreshAfterChange();
-      Toast.makeText(this, "Тишина обрезана", Toast.LENGTH_SHORT).show();
-    });
-
     findViewById(R.id.btnGain).setOnClickListener(v -> showGainDialog());
     findViewById(R.id.btnNormalize).setOnClickListener(v -> showNormalizeDialog());
-    findViewById(R.id.btnDenoise).setOnClickListener(v -> {
-      if (clip.pcm == null || clip.pcm.length == 0)
-        return;
-
-      int start = wave.hasSelection() ? wave.getSelStart() : 0;
-      int end = wave.hasSelection() ? wave.getSelEnd() : clip.frameCount();
-
-      // Вырезаем кусок для обработки
-      float[] range = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, start, end);
-
-      Toast.makeText(this, "Обработка Denoise...", Toast.LENGTH_SHORT).show();
-
-      new Thread(() -> {
-        try {
-          // Применяем наш шумодав (RNNoise)
-          float[] denoised = com.grinya.voicesampleprep.util.Denoiser.denoiseStereo(range);
-
-          runOnUiThread(() -> {
-            // Вставляем обработанный звук обратно
-            clip.insert(denoised, start, start, end);
-            refreshAfterChange();
-            Toast.makeText(this, "Denoise готов", Toast.LENGTH_SHORT).show();
-          });
-        } catch (Throwable e) {
-          android.util.Log.e("DENOISE_UI", "Ошибка", e);
-          runOnUiThread(
-              () -> Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show());
-        }
-      }).start();
-    });
-    findViewById(R.id.btnMono).setOnClickListener(v -> {
-      if (wave.hasSelection()) {
-        clip.mixToMonoRange(wave.getSelStart(), wave.getSelEnd());
-      } else {
-        clip.mixToMonoRange(0, clip.frameCount());
-      }
-      refreshAfterChange();
-      Toast.makeText(this, "Сведено в моно", Toast.LENGTH_SHORT).show();
-    });
     findViewById(R.id.btnFadeIn).setOnClickListener(v -> showFadeDialog(true));
     findViewById(R.id.btnFadeOut).setOnClickListener(v -> showFadeDialog(false));
+
     findViewById(R.id.btnReverse).setOnClickListener(v -> {
       if (wave.hasSelection()) {
         clip.reverseRange(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
@@ -340,6 +281,7 @@ public class EditActivity extends AppCompatActivity
       }
       refreshAfterChange();
     });
+
     findViewById(R.id.btnInvert).setOnClickListener(v -> {
       if (wave.hasSelection()) {
         clip.invertPhase(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
@@ -348,6 +290,7 @@ public class EditActivity extends AppCompatActivity
       }
       refreshAfterChange();
     });
+
     findViewById(R.id.btnMarker).setOnClickListener(v -> {
       if (wave.hasSelection()) {
         clip.addMarker(wave.getSelStart());
@@ -367,6 +310,52 @@ public class EditActivity extends AppCompatActivity
       return true;
     });
   }
+
+  private void wireProcessTools() {
+    findViewById(R.id.btnDenoise).setOnClickListener(v -> {
+      if (clip.pcm == null || clip.pcm.length == 0)
+        return;
+      int start = wave.hasSelection() ? wave.getSelStart() : 0;
+      int end = wave.hasSelection() ? wave.getSelEnd() : clip.frameCount();
+      float[] range = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, start, end);
+      Toast.makeText(this, "Обработка Denoise...", Toast.LENGTH_SHORT).show();
+      new Thread(() -> {
+        try {
+          float[] denoised = com.grinya.voicesampleprep.util.Denoiser.denoiseStereo(range);
+          runOnUiThread(() -> {
+            clip.insert(denoised, start, start, end);
+            refreshAfterChange();
+            Toast.makeText(this, "Denoise готов", Toast.LENGTH_SHORT).show();
+          });
+        } catch (Throwable e) {
+          runOnUiThread(
+              () -> Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show());
+        }
+      }).start();
+    });
+
+    findViewById(R.id.btnAutoTrim).setOnClickListener(v -> {
+      if (wave.hasSelection()) {
+        clip.autoTrim(wave.getSelStart(), wave.getSelEnd(), 0.001f, applyL(), applyR());
+      } else {
+        clip.autoTrim(0, clip.frameCount(), 0.001f, applyL(), applyR());
+      }
+      wave.clearSelection();
+      refreshAfterChange();
+      Toast.makeText(this, "Тишина обрезана", Toast.LENGTH_SHORT).show();
+    });
+
+    findViewById(R.id.btnMono).setOnClickListener(v -> {
+      if (wave.hasSelection()) {
+        clip.mixToMonoRange(wave.getSelStart(), wave.getSelEnd());
+      } else {
+        clip.mixToMonoRange(0, clip.frameCount());
+      }
+      refreshAfterChange();
+      Toast.makeText(this, "Сведено в моно", Toast.LENGTH_SHORT).show();
+    });
+  }
+
   // ---------- диалоги ----------
 
   private void showGainDialog() {

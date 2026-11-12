@@ -145,38 +145,85 @@ public class ExportActivity extends AppCompatActivity {
   }
 
   private void doExport(Uri treeUri) {
-    boolean byMarkers = ((RadioButton) findViewById(R.id.rbByMarkers)).isChecked();
-    int bits = ((RadioButton) findViewById(R.id.rb24)).isChecked() ? 24 : 16;
-    int rate = ((RadioButton) findViewById(R.id.rb441)).isChecked() ? 44100 : 48000;
+    // 1. Читаем настройки
+    ExportSettings settings = readSettings();
 
-    // Читаем три варианта каналов
-    boolean isStereoMono = ((RadioButton) findViewById(R.id.rbStereoMono)).isChecked();
-    boolean isTrueMono = ((RadioButton) findViewById(R.id.rbTrueMono)).isChecked();
+    // 2. Собираем диапазоны
+    List<int[]> ranges = buildRanges(settings.byMarkers);
+    if (ranges.isEmpty())
+      return;
 
-    boolean denoise = ((CheckBox) findViewById(R.id.cbDenoise)).isChecked();
-    final boolean finalDenoise = denoise;
-    boolean normalize = ((CheckBox) findViewById(R.id.cbNormalize)).isChecked();
-    boolean fade = ((CheckBox) findViewById(R.id.cbFade)).isChecked();
-    boolean trimSilence = ((CheckBox) findViewById(R.id.cbTrimSilence)).isChecked();
-    String nameTemplateRaw = ((EditText) findViewById(R.id.edName)).getText().toString().trim();
-    final String nameTemplate = nameTemplateRaw.isEmpty() ? "{name}_{index}" : nameTemplateRaw;
+    // 3. Экспортируем
+    final String baseName = stripExt(source.name);
+    final List<String> written = new ArrayList<>();
+    final int[] failed = { 0 };
+    androidx.documentfile.provider.DocumentFile dir = androidx.documentfile.provider.DocumentFile
+        .fromTreeUri(this, treeUri);
 
-    // собираем список диапазонов [start, end)
-    List<int[]> ranges = new ArrayList<>();
-    if (byMarkers) {
-      // Берем только маркеры (без начала и конца файла)
-      List<Integer> all = new ArrayList<>(source.markers);
-
-      // Если маркеров меньше 2, экспортировать нечего (нельзя построить интервал)
-      if (all.size() < 2) {
-        Toast.makeText(this, "Нужно минимум 2 маркера", Toast.LENGTH_SHORT).show();
-        return;
+    new Thread(() -> {
+      for (int idx = 0; idx < ranges.size(); idx++) {
+        int[] r = ranges.get(idx);
+        String fileName = "";
+        try {
+          fileName = exportSingleRange(treeUri, dir, baseName, r, idx + 1, settings);
+          if (fileName != null) {
+            written.add(fileName);
+          } else {
+            failed[0]++;
+          }
+        } catch (Exception e) {
+          android.util.Log.e("EXPORT", "Failed for " + fileName, e);
+          failed[0]++;
+        }
       }
 
+      runOnUiThread(() -> showExportResult(written.size(), failed[0]));
+    }).start();
+  }
+
+  // --- Вспомогательный класс для настроек ---
+  private static class ExportSettings {
+    boolean byMarkers;
+    int bits;
+    int rate;
+    boolean stereoMono;
+    boolean trueMono;
+    boolean normalize;
+    boolean fade;
+    boolean trimSilence;
+    boolean denoise;
+    String nameTemplate;
+  }
+
+  private ExportSettings readSettings() {
+    ExportSettings s = new ExportSettings();
+    s.byMarkers = ((RadioButton) findViewById(R.id.rbByMarkers)).isChecked();
+    s.bits = ((RadioButton) findViewById(R.id.rb24)).isChecked() ? 24 : 16;
+    s.rate = ((RadioButton) findViewById(R.id.rb441)).isChecked() ? 44100 : 48000;
+    s.stereoMono = ((RadioButton) findViewById(R.id.rbStereoMono)).isChecked();
+    s.trueMono = ((RadioButton) findViewById(R.id.rbTrueMono)).isChecked();
+    s.normalize = ((CheckBox) findViewById(R.id.cbNormalize)).isChecked();
+    s.fade = ((CheckBox) findViewById(R.id.cbFade)).isChecked();
+    s.trimSilence = ((CheckBox) findViewById(R.id.cbTrimSilence)).isChecked();
+    // Если добавишь чекбокс Denoise:
+    s.denoise = findViewById(R.id.cbDenoise) != null
+        && ((CheckBox) findViewById(R.id.cbDenoise)).isChecked();
+
+    String raw = ((EditText) findViewById(R.id.edName)).getText().toString().trim();
+    s.nameTemplate = raw.isEmpty() ? "{name}_{index}" : raw;
+    return s;
+  }
+
+  private List<int[]> buildRanges(boolean byMarkers) {
+    List<int[]> ranges = new ArrayList<>();
+    if (byMarkers) {
+      List<Integer> all = new ArrayList<>(source.markers);
+      if (all.size() < 2) {
+        Toast.makeText(this, "Нужно минимум 2 маркера", Toast.LENGTH_SHORT).show();
+        return ranges;
+      }
       java.util.TreeSet<Integer> ts = new java.util.TreeSet<>(all);
       Integer[] arr = ts.toArray(new Integer[0]);
-
-      // Строим интервалы между соседними маркерами
       for (int i = 0; i < arr.length - 1; i++) {
         if (arr[i + 1] > arr[i])
           ranges.add(new int[] { arr[i], arr[i + 1] });
@@ -188,88 +235,49 @@ public class ExportActivity extends AppCompatActivity {
         ranges.add(new int[] { 0, source.frameCount() });
       }
     }
+    return ranges;
+  }
 
-    if (ranges.isEmpty()) {
-      Toast.makeText(this, "Нечего экспортировать", Toast.LENGTH_SHORT).show();
-      return;
+  private String exportSingleRange(Uri treeUri, androidx.documentfile.provider.DocumentFile dir,
+      String baseName, int[] r, int index, ExportSettings s) throws Exception {
+    float[] rangePcm = com.grinya.voicesampleprep.util.AudioOps.trim(source.pcm, r[0], r[1]);
+
+    // Имя
+    String nameNoExt = buildName(s.nameTemplate, baseName, index);
+    if (nameNoExt.toLowerCase().endsWith(".wav"))
+      nameNoExt = nameNoExt.substring(0, nameNoExt.length() - 4);
+    String fileName = getUniqueName(dir, nameNoExt, ".wav");
+
+    Uri fileUri = createFile(treeUri, fileName);
+    if (fileUri == null)
+      return null;
+
+    java.io.File tmp = new java.io.File(getCacheDir(), "exp_tmp.wav");
+
+    // Вызов WavWriter
+    com.grinya.voicesampleprep.audio.WavWriter.write(tmp, rangePcm, source.sampleRate, s.rate,
+        s.bits, s.stereoMono, s.trueMono, s.normalize, s.fade, s.trimSilence, s.denoise);
+
+    // Копируем
+    try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(fileUri, "w");
+        FileOutputStream out = new FileOutputStream(pfd.getFileDescriptor());
+        java.io.FileInputStream in = new java.io.FileInputStream(tmp)) {
+      byte[] buf = new byte[65536];
+      int n;
+      while ((n = in.read(buf)) > 0)
+        out.write(buf, 0, n);
     }
+    tmp.delete();
+    return fileName;
+  }
 
-    final String baseName = stripExt(source.name);
-    final List<String> written = new ArrayList<>();
-    final int[] failed = { 0 };
-
-    androidx.documentfile.provider.DocumentFile dir = androidx.documentfile.provider.DocumentFile
-        .fromTreeUri(this, treeUri);
-
-    // Финализируем переменные для захвата в поток
-    final int finalBits = bits;
-    final int finalRate = rate;
-    final boolean finalStereoMono = isStereoMono;
-    final boolean finalTrueMono = isTrueMono;
-    final boolean finalNormalize = normalize;
-    final boolean finalFade = fade;
-    final boolean finalTrimSilence = trimSilence;
-
-    new Thread(() -> {
-      for (int idx = 0; idx < ranges.size(); idx++) {
-        int[] r = ranges.get(idx);
-        String fileName = "";
-        try {
-          float[] rangePcm = AudioOps.trim(source.pcm, r[0], r[1]);
-
-          // Формируем имя
-          String nameNoExt = buildName(nameTemplate, baseName, idx + 1);
-          if (nameNoExt.toLowerCase().endsWith(".wav")) {
-            nameNoExt = nameNoExt.substring(0, nameNoExt.length() - 4);
-          }
-          fileName = getUniqueName(dir, nameNoExt, ".wav");
-
-          Uri fileUri = createFile(treeUri, fileName);
-          if (fileUri == null) {
-            failed[0]++;
-            continue;
-          }
-
-          // Временный файл
-          java.io.File tmp = new java.io.File(getCacheDir(), "exp_tmp.wav");
-
-          android.util.Log.d("EXPORT",
-              "Writing: bits=" + finalBits + " rate=" + finalRate + " stereoMono=" + finalStereoMono
-                  + " trueMono=" + finalTrueMono + " normalize=" + finalNormalize + " fade="
-                  + finalFade + " trimSilence=" + finalTrimSilence + " pcm.length="
-                  + rangePcm.length);
-
-          // Всё делает WavWriter: ресемплинг, сведение, эффекты, запись
-          WavWriter.write(tmp, rangePcm, source.sampleRate, finalRate, finalBits, finalStereoMono,
-              finalTrueMono, finalNormalize, finalFade, finalTrimSilence);
-
-          // Копируем во временное через SAF
-          try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(fileUri, "w");
-              FileOutputStream out = new FileOutputStream(pfd.getFileDescriptor());
-              java.io.FileInputStream in = new java.io.FileInputStream(tmp)) {
-            byte[] buf = new byte[65536];
-            int n;
-            while ((n = in.read(buf)) > 0)
-              out.write(buf, 0, n);
-          }
-          tmp.delete();
-          written.add(fileName);
-
-        } catch (Exception e) {
-          android.util.Log.e("EXPORT", "Failed for " + fileName, e);
-          failed[0]++;
-        }
-      }
-
-      runOnUiThread(() -> {
-        String msg = "Экспортировано: " + written.size();
-        if (failed[0] > 0)
-          msg += " (ошибок: " + failed[0] + ")";
-        Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
-        if (written.size() > 0)
-          finish();
-      });
-    }).start();
+  private void showExportResult(int written, int failed) {
+    String msg = "Экспортировано: " + written;
+    if (failed > 0)
+      msg += " (ошибок: " + failed + ")";
+    Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
+    if (written > 0)
+      finish();
   }
 
   private Uri createFile(Uri treeUri, String name) {
