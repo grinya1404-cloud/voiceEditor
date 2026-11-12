@@ -169,7 +169,7 @@ public class WaveformView extends View {
     handleHalfPx = (int) (HANDLE_HALF_DP * density);
     markerFlagW = (int) (MARKER_FLAG_W_DP * density);
     markerFlagH = (int) (MARKER_FLAG_H_DP * density);
-    checkSize = (int) (24 * density);
+    checkSize = (int) (32 * density);
     paddingPx = (int) (25 * density); // Отступ по 40dp с каждой стороны
 
     pWave.setColor(colorWave);
@@ -229,11 +229,12 @@ public class WaveformView extends View {
     pCheck.setColor(colorCheck);
     pCheck.setStyle(Paint.Style.FILL);
 
-    pCheckBg.setColor(0xCC1A1A1E);
+    // pCheckBg.setColor(0xCC1A1A1E);
+    pCheckBg.setColor(0xAA1A1A1E); // 66% непрозрачности вместо 80%
     pCheckBg.setStyle(Paint.Style.FILL);
 
     pChannelText.setColor(0xFF0E0E10); // Тёмный цвет (под цвет фона)
-    pChannelText.setTextSize(12f * density);
+    pChannelText.setTextSize(16f * density);
     pChannelText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
 
     setBackgroundColor(colorBg);
@@ -1032,33 +1033,46 @@ public class WaveformView extends View {
     if (!stereoView)
       return;
 
-    // L
-    checkLx = w - checkSize - 10;
-    checkLy = waveTop + 10;
+    // L (верхняя волна)
+    checkLx = w - checkSize - 25;
+    checkLy = waveTop + waveH / 2 - checkSize - 25;
     drawCheckbox(canvas, checkLx, checkLy, channelL);
-    // Текст "L" по центру чекбокса
-    canvas.drawText("L", checkLx + checkSize / 2f - 4, checkLy + checkSize / 2f + 5, pChannelText);
+    pChannelText.setColor(channelL ? 0xFF0E0E10 : 0xFFE8E8EA);
+    // Центрируем крупную букву
+    canvas.drawText("L", checkLx + checkSize / 2f - 10, checkLy + checkSize / 2f + 10, pChannelText);
 
-    // R
-    checkRx = w - checkSize - 10;
-    checkRy = waveTop + waveH / 2 + 10;
+    // R (нижняя волна)
+    checkRx = w - checkSize - 25;
+    checkRy = waveTop + waveH / 2 + 25;
     drawCheckbox(canvas, checkRx, checkRy, channelR);
-    // Текст "R" по центру чекбокса
-    canvas.drawText("R", checkRx + checkSize / 2f - 4, checkRy + checkSize / 2f + 5, pChannelText);
+    pChannelText.setColor(channelR ? 0xFF0E0E10 : 0xFFE8E8EA);
+    canvas.drawText("R", checkRx + checkSize / 2f - 10, checkRy + checkSize / 2f + 10, pChannelText);
   }
 
   private void drawCheckbox(Canvas c, float x, float y, boolean checked) {
-    c.drawRect(x, y, x + checkSize, y + checkSize, pCheckBg);
-    Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-    p.setStyle(Paint.Style.STROKE);
-    p.setStrokeWidth(2f);
-    p.setColor(colorCheck);
-    c.drawRect(x, y, x + checkSize, y + checkSize, p);
+    float radius = checkSize / 2f;
+    float cx = x + radius;
+    float cy = y + radius;
 
+    // Фон (скруглённый квадрат)
+    Paint bg = new Paint(Paint.ANTI_ALIAS_FLAG);
     if (checked) {
-      p.setStyle(Paint.Style.FILL);
-      c.drawRect(x + 5, y + 5, x + checkSize - 5, y + checkSize - 5, p);
+      bg.setColor(0xAAFFB300); // Янтарный с прозрачностью AA (как у кнопки "M")
+    } else {
+      bg.setColor(0xAA1A1A1E); // Тёмный с прозрачностью AA
     }
+    bg.setStyle(Paint.Style.FILL);
+
+    float cornerRadius = 8f * getResources().getDisplayMetrics().density;
+    android.graphics.RectF rect = new android.graphics.RectF(x, y, x + checkSize, y + checkSize);
+    c.drawRoundRect(rect, cornerRadius, cornerRadius, bg);
+
+    // Обводка
+    Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
+    border.setStyle(Paint.Style.STROKE);
+    border.setStrokeWidth(2f);
+    border.setColor(checked ? 0xFFFFD54F : 0xFF444444);
+    c.drawRoundRect(rect, cornerRadius, cornerRadius, border);
   }
 
   private void drawRuler(Canvas canvas, int w, int rulerH) {

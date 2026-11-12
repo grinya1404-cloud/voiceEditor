@@ -38,4 +38,7 @@
     <string name="copy_1">Copy</string>
     <string name="auto_trim">Auto-Trim</string>
     <string name="to_mono">To Mono</string>
+    <string name="channels">Channels</string>
+    <string name="swap">Swap</string>
+    <string name="channels_1">Channels</string>
 </resources>

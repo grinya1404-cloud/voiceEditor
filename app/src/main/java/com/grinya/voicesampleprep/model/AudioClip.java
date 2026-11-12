@@ -320,6 +320,39 @@ public class AudioClip {
     }
   }
 
+  public void swapChannels(int startFrame, int endFrame) {
+    pushHistory();
+    int total = frameCount();
+    int s = Math.max(0, Math.min(startFrame, total));
+    int e = Math.max(s, Math.min(endFrame, total));
+    for (int i = s; i < e; i++) {
+      int idx = i * CHANNELS;
+      float tmp = pcm[idx];
+      pcm[idx] = pcm[idx + 1];
+      pcm[idx + 1] = tmp;
+    }
+  }
+
+  public void copyLtoR(int startFrame, int endFrame) {
+    pushHistory();
+    int total = frameCount();
+    int s = Math.max(0, Math.min(startFrame, total));
+    int e = Math.max(s, Math.min(endFrame, total));
+    for (int i = s; i < e; i++) {
+      pcm[i * CHANNELS + 1] = pcm[i * CHANNELS];
+    }
+  }
+
+  public void copyRtoL(int startFrame, int endFrame) {
+    pushHistory();
+    int total = frameCount();
+    int s = Math.max(0, Math.min(startFrame, total));
+    int e = Math.max(s, Math.min(endFrame, total));
+    for (int i = s; i < e; i++) {
+      pcm[i * CHANNELS] = pcm[i * CHANNELS + 1];
+    }
+  }
+
   /** Пиковая нормализация диапазона к target. Остальное не трогаем. */
   public void normalizeRangePeak(int startFrame, int endFrame, float target) {
     pushHistory();

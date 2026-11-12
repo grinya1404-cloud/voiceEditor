@@ -31,7 +31,7 @@ public class EditActivity extends AppCompatActivity
   private WaveformView wave;
   private boolean isPaused = false;
 
-  private ImageButton btnPlay, btnPause, btnStop;
+  private ImageButton btnPlay, btnStop;
   private TextView txtName, txtTime;
   private boolean isChanged = false;
 
@@ -77,7 +77,7 @@ public class EditActivity extends AppCompatActivity
     txtName = findViewById(R.id.txtName);
     txtTime = findViewById(R.id.txtTime);
     btnPlay = findViewById(R.id.btnPlay);
-    btnPause = findViewById(R.id.btnPause);
+    // btnPause = findViewById(R.id.btnPause);
     btnStop = findViewById(R.id.btnStop);
 
     txtName.setText(clip.name);
@@ -105,7 +105,7 @@ public class EditActivity extends AppCompatActivity
     wireToolbar();
     wireTransport();
     wireTools();
-    btnPause.setEnabled(false);
+    // btnPause.setEnabled(false);
   }
 
   private void wireToolbar() {
@@ -122,82 +122,66 @@ public class EditActivity extends AppCompatActivity
         refreshAfterChange();
       }
     });
-    findViewById(R.id.btnSave).setOnClickListener(v -> {
-      try {
-        clip.save(); // Сохраняет PCM в WAV
-        // MarkerStore.save(clip.dir, clip.markers); // Сохраняет маркеры
-        isChanged = false;
-        Toast.makeText(this, "Сохранено", Toast.LENGTH_SHORT).show();
-      } catch (Exception e) {
-        Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show();
-      }
-    });
-    findViewById(R.id.btnInfo).setOnClickListener(v -> {
-      int start = wave.hasSelection() ? wave.getSelStart() : -1;
-      int end = wave.hasSelection() ? wave.getSelEnd() : -1;
-      AudioInfoDialog.show(this, clip, start, end);
-    });
-    findViewById(R.id.btnExport).setOnClickListener(v -> {
-      int selStart = wave.hasSelection() ? wave.getSelStart() : -1;
-      int selEnd = wave.hasSelection() ? wave.getSelEnd() : -1;
-      ExportActivity.setSource(clip, selStart, selEnd);
-      startActivity(new Intent(this, ExportActivity.class));
-    });
-    findViewById(R.id.btnMarker).setOnClickListener(v -> {
-      int f = player.getCurrentFrame();
-      clip.addMarker(f);
-      wave.updateMarkers(clip.markers);
-      isChanged = true; // Маркеры изменились
+
+    // Меню (Save, Info, Export)
+    findViewById(R.id.btnMenu).setOnClickListener(v -> {
+      androidx.appcompat.widget.PopupMenu popup = new androidx.appcompat.widget.PopupMenu(this, v);
+      popup.getMenu().add(0, 1, 0, "Сохранить");
+      popup.getMenu().add(0, 2, 0, "Инфо");
+      popup.getMenu().add(0, 3, 0, "Экспорт");
+
+      popup.setOnMenuItemClickListener(item -> {
+        switch (item.getItemId()) {
+          case 1:
+            try {
+              clip.save();
+              Toast.makeText(this, "Сохранено", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+              Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+            return true;
+          case 2:
+            int start = wave.hasSelection() ? wave.getSelStart() : -1;
+            int end = wave.hasSelection() ? wave.getSelEnd() : -1;
+            AudioInfoDialog.show(this, clip, start, end);
+            return true;
+          case 3:
+            int selStart = wave.hasSelection() ? wave.getSelStart() : -1;
+            int selEnd = wave.hasSelection() ? wave.getSelEnd() : -1;
+            ExportActivity.setSource(clip, selStart, selEnd);
+            startActivity(new Intent(this, ExportActivity.class));
+            return true;
+        }
+        return false;
+      });
+      popup.show();
     });
   }
 
   private void wireTransport() {
-    btnPlay.setOnClickListener(v -> {
-      int startFrame;
-      int endFrame;
-
-      if (wave.hasSelection()) {
-        // Играем только выделение
-        startFrame = wave.getSelStart();
-        endFrame = wave.getSelEnd();
-      } else {
-        // Играем от курсора до конца
-        startFrame = isPaused ? wave.getActivePlayFrame() : wave.getPlayheadFrame();
-        endFrame = clip.frameCount();
-      }
-
-      player.setPlayRange(startFrame, endFrame);
-      player.seekToFrame(startFrame);
-      player.play();
-      isPaused = false;
-    });
-
-    btnPause.setOnClickListener(v -> {
+    findViewById(R.id.btnPlay).setOnClickListener(v -> {
       if (player.isPlaying()) {
         player.pause();
         isPaused = true;
-        btnPlay.setEnabled(true);
-        btnPause.setEnabled(false);
+      } else {
+        int startFrame = isPaused ? wave.getActivePlayFrame() : wave.getPlayheadFrame();
+        player.seekToFrame(startFrame);
+        player.play();
+        isPaused = false;
       }
     });
 
-    btnStop.setOnClickListener(v -> {
+    findViewById(R.id.btnStop).setOnClickListener(v -> {
       player.stop();
       isPaused = false;
       int ph = wave.getPlayheadFrame();
       wave.snapActivePlayheadFrame(ph);
       wave.setPlayheadFrame(ph);
       updateTimeLabel();
-      btnPlay.setEnabled(true);
-      btnPause.setEnabled(false);
     });
 
-    findViewById(R.id.btnZoomIn).setOnClickListener(v -> {
-      wave.zoomInAroundCenter(2.0);
-    });
-    findViewById(R.id.btnZoomOut).setOnClickListener(v -> {
-      wave.zoomInAroundCenter(0.5);
-    });
+    findViewById(R.id.btnZoomIn).setOnClickListener(v -> wave.zoomInAroundCenter(2.0));
+    findViewById(R.id.btnZoomOut).setOnClickListener(v -> wave.zoomInAroundCenter(0.5));
   }
 
   private void wireTools() {
@@ -354,6 +338,37 @@ public class EditActivity extends AppCompatActivity
       refreshAfterChange();
       Toast.makeText(this, "Сведено в моно", Toast.LENGTH_SHORT).show();
     });
+    findViewById(R.id.btnChannels).setOnClickListener(v -> {
+      boolean applyL = applyL();
+      boolean applyR = applyR();
+
+      if (applyL && applyR) {
+        // Оба канала: меняем местами
+        if (wave.hasSelection()) {
+          clip.swapChannels(wave.getSelStart(), wave.getSelEnd());
+        } else {
+          clip.swapChannels(0, clip.frameCount());
+        }
+        Toast.makeText(this, "L ↔ R", Toast.LENGTH_SHORT).show();
+      } else if (applyL) {
+        // Только L включен: копируем R в L
+        if (wave.hasSelection()) {
+          clip.copyRtoL(wave.getSelStart(), wave.getSelEnd());
+        } else {
+          clip.copyRtoL(0, clip.frameCount());
+        }
+        Toast.makeText(this, "R → L", Toast.LENGTH_SHORT).show();
+      } else if (applyR) {
+        // Только R включен: копируем L в R
+        if (wave.hasSelection()) {
+          clip.copyLtoR(wave.getSelStart(), wave.getSelEnd());
+        } else {
+          clip.copyLtoR(0, clip.frameCount());
+        }
+        Toast.makeText(this, "L → R", Toast.LENGTH_SHORT).show();
+      }
+      refreshAfterChange();
+    });
   }
 
   // ---------- диалоги ----------
@@ -499,8 +514,6 @@ public class EditActivity extends AppCompatActivity
 
   @Override
   public void onEnded() {
-    btnPlay.setEnabled(true);
-    btnPause.setEnabled(false);
     isPaused = false;
 
     // Возвращаем плеер в режим "весь файл"
@@ -512,9 +525,8 @@ public class EditActivity extends AppCompatActivity
 
   @Override
   public void onStateChanged(boolean playing) {
-    btnPlay.setEnabled(!playing);
-    btnPause.setEnabled(playing);
-    updateTransportIcons();
+    btnPlay.setImageResource(
+        playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play);
   }
 
   private void updateTransportIcons() {
@@ -522,7 +534,7 @@ public class EditActivity extends AppCompatActivity
     btnPlay.setColorFilter(btnPlay.isEnabled() ? 0xFFFFB300 // accent
         : 0xFF555555); // dim
     // Pause — тоже акцент, когда активна, серый когда нет
-    btnPause.setColorFilter(btnPause.isEnabled() ? 0xFFFFB300 : 0xFF555555);
+    // btnPause.setColorFilter(btnPause.isEnabled() ? 0xFFFFB300 : 0xFF555555);
   }
 
   // ---------- WaveformView.Listener ----------
@@ -693,7 +705,7 @@ public class EditActivity extends AppCompatActivity
     if (player.isPlaying()) {
       player.pause();
       btnPlay.setEnabled(true);
-      btnPause.setEnabled(false);
+      // btnPause.setEnabled(false);
     }
   }
 
