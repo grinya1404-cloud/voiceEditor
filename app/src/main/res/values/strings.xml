@@ -7,38 +7,38 @@
     <string name="play">Play</string>
     <string name="pause">Pause</string>
     <string name="stop">Stop</string>
-    <string name="trim">Trim</string>
-    <string name="cut">Cut</string>
-    <string name="insert">Insert</string>
-    <string name="silence">Silence</string>
-    <string name="gain">Gain</string>
-    <string name="normalize">Normalize</string>
-    <string name="fade_in">Fade In</string>
-    <string name="fade_out">Fade Out</string>
-    <string name="reverse">Reverse</string>
     <string name="marker">Marker</string>
+
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
+
     <string name="undo">Undo</string>
     <string name="redo">Redo</string>
     <string name="save">Save</string>
-    <string name="cancel">Cancel</string>
-    <string name="ok">OK</string>
-    <string name="export">Export</string>
-    <string name="invert">Invert</string>
+    <string name="export"> Export</string>
     
+    <string name="invert">  Invert</string>
+    <string name="denoise"> Denoise</string>
+    <string name="paste">   Paste</string>
+    <string name="copy">    Copy</string>
+    <string name="auto_trim">Auto-Trim</string>
+    <string name="to_mono"> To Mono</string>
+    <string name="channels">Channels</string>
+    <string name="trim">    Trim</string>
+    <string name="cut">     Cut</string>
+    <string name="insert">  Insert</string>
+    <string name="silence"> Silence</string>
+    <string name="gain">    Gain</string>
+    <string name="normalize">Normalize</string>
+    <string name="fade_in"> Fade In</string>
+    <string name="fade_out">Fade Out</string>
+    <string name="reverse"> Reverse</string>
+
     <!-- dialogs -->
     <string name="gain_dialog_title">Gain (dB)</string>
     <string name="normalize_dialog_title">Normalize peak (0..1)</string>
     <string name="fade_dialog_title">Fade length (ms)</string>
     <string name="no_selection">Сначала выделите фрагмент</string>
     <string name="clip">clip</string>
-    <string name="denoise">Denoise</string>
-    <string name="paste">Paste</string>
-    <string name="copy">Copy</string>
-    <string name="paste_1">Paste</string>
-    <string name="copy_1">Copy</string>
-    <string name="auto_trim">Auto-Trim</string>
-    <string name="to_mono">To Mono</string>
-    <string name="channels">Channels</string>
-    <string name="swap">Swap</string>
-    <string name="channels_1">Channels</string>
+
 </resources>

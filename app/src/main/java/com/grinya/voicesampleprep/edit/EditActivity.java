@@ -20,6 +20,8 @@ import com.grinya.voicesampleprep.model.AudioClip;
 import com.grinya.voicesampleprep.model.AudioMeta;
 import com.grinya.voicesampleprep.util.AudioInfoDialog;
 import java.util.Locale;
+import android.view.View;
+import android.widget.Button;
 
 public class EditActivity extends AppCompatActivity
     implements AudioPlayer.Listener, WaveformView.Listener {
@@ -40,6 +42,7 @@ public class EditActivity extends AppCompatActivity
   private boolean isStereoMode = false;
   private boolean isLeftEnabled = true;
   private boolean isRightEnabled = true;
+  private final java.util.ArrayList<String> recentActions = new java.util.ArrayList<>();
 
   private float[] clipboard = null; // Внутренний буфер обмена
 
@@ -105,6 +108,7 @@ public class EditActivity extends AppCompatActivity
     wireToolbar();
     wireTransport();
     wireTools();
+    updateDynamicButtons();
     // btnPause.setEnabled(false);
   }
 
@@ -158,6 +162,81 @@ public class EditActivity extends AppCompatActivity
     });
   }
 
+  private void updateDynamicButtons() {
+    // Button btn1 = findViewById(R.id.btnDynamic1);
+    // Button btn2 = findViewById(R.id.btnDynamic2);
+    TextView btn1 = findViewById(R.id.btnDynamic1);
+    TextView btn2 = findViewById(R.id.btnDynamic2);
+
+    if (recentActions.size() > 0) {
+      btn1.setText(recentActions.get(0));
+      btn1.setVisibility(View.VISIBLE);
+      btn1.setOnClickListener(v -> executeActionByName(recentActions.get(0)));
+    } else {
+      btn1.setVisibility(View.GONE);
+    }
+
+    if (recentActions.size() > 1) {
+      btn2.setText(recentActions.get(1));
+      btn2.setVisibility(View.VISIBLE);
+      btn2.setOnClickListener(v -> executeActionByName(recentActions.get(1)));
+    } else {
+      btn2.setVisibility(View.GONE);
+    }
+  }
+
+  private void executeActionByName(String actionName) {
+    switch (actionName) {
+      case "Insert":
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("*/*");
+        i.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "audio/wav", "audio/x-wav", "audio/mpeg",
+            "audio/mp4", "audio/aac", "audio/flac", "audio/x-flac", "audio/*" });
+        startActivityForResult(i, REQ_INSERT);
+        break;
+      case "Silence":
+        if (!requireSelection())
+          return;
+        clip.silence(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
+        refreshAfterChange();
+        break;
+      case "Gain":
+        showGainDialog();
+        break;
+      case "Normalize":
+        showNormalizeDialog();
+        break;
+      case "Fade In":
+        showFadeDialog(true);
+        break;
+      case "Fade Out":
+        showFadeDialog(false);
+        break;
+      case "Reverse":
+        if (wave.hasSelection())
+          clip.reverseRange(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
+        else
+          clip.reverse(applyL(), applyR());
+        refreshAfterChange();
+        break;
+      case "Invert":
+        if (wave.hasSelection())
+          clip.invertPhase(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
+        else
+          clip.invertPhase(0, clip.frameCount(), applyL(), applyR());
+        refreshAfterChange();
+        break;
+      case "To Mono":
+        if (wave.hasSelection())
+          clip.mixToMonoRange(wave.getSelStart(), wave.getSelEnd());
+        else
+          clip.mixToMonoRange(0, clip.frameCount());
+        refreshAfterChange();
+        break;
+    }
+  }
+
   private void wireTransport() {
     findViewById(R.id.btnPlay).setOnClickListener(v -> {
       if (player.isPlaying()) {
@@ -185,12 +264,7 @@ public class EditActivity extends AppCompatActivity
   }
 
   private void wireTools() {
-    wireEditTools();
-    wireEffectTools();
-    wireProcessTools();
-  }
-
-  private void wireEditTools() {
+    // --- Закреплённые кнопки ---
     findViewById(R.id.btnTrim).setOnClickListener(v -> {
       if (!requireSelection())
         return;
@@ -214,9 +288,8 @@ public class EditActivity extends AppCompatActivity
     findViewById(R.id.btnCopy).setOnClickListener(v -> {
       if (!requireSelection())
         return;
-      int s = wave.getSelStart();
-      int e = wave.getSelEnd();
-      clipboard = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, s, e);
+      clipboard = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, wave.getSelStart(),
+          wave.getSelEnd());
       Toast.makeText(this, "Скопировано", Toast.LENGTH_SHORT).show();
     });
 
@@ -234,143 +307,139 @@ public class EditActivity extends AppCompatActivity
       Toast.makeText(this, "Вставлено", Toast.LENGTH_SHORT).show();
     });
 
-    findViewById(R.id.btnInsert).setOnClickListener(v -> {
-      Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-      i.addCategory(Intent.CATEGORY_OPENABLE);
-      i.setType("*/*");
-      i.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "audio/wav", "audio/x-wav", "audio/mpeg",
-          "audio/mp4", "audio/aac", "audio/flac", "audio/x-flac", "audio/*" });
-      startActivityForResult(i, REQ_INSERT);
-    });
-  }
+    // --- Меню "Ещё" ---
+    findViewById(R.id.btnMore).setOnClickListener(v -> {
+      androidx.appcompat.widget.PopupMenu popup = new androidx.appcompat.widget.PopupMenu(this, v);
+      popup.getMenu().add(0, 1, 0, "Denoise");
+      popup.getMenu().add(0, 2, 0, "Auto-Trim");
+      popup.getMenu().add(0, 3, 0, "Channels");
+      popup.getMenu().add(0, 4, 0, "Insert");
+      popup.getMenu().add(0, 5, 0, "Silence");
+      popup.getMenu().add(0, 6, 0, "Gain");
+      popup.getMenu().add(0, 7, 0, "Normalize");
+      popup.getMenu().add(0, 8, 0, "Fade In");
+      popup.getMenu().add(0, 9, 0, "Fade Out");
+      popup.getMenu().add(0, 10, 0, "Reverse");
+      popup.getMenu().add(0, 11, 0, "Invert");
+      popup.getMenu().add(0, 12, 0, "To Mono");
 
-  private void wireEffectTools() {
-    findViewById(R.id.btnSilence).setOnClickListener(v -> {
-      if (!requireSelection())
-        return;
-      clip.silence(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
-      refreshAfterChange();
-    });
-
-    findViewById(R.id.btnGain).setOnClickListener(v -> showGainDialog());
-    findViewById(R.id.btnNormalize).setOnClickListener(v -> showNormalizeDialog());
-    findViewById(R.id.btnFadeIn).setOnClickListener(v -> showFadeDialog(true));
-    findViewById(R.id.btnFadeOut).setOnClickListener(v -> showFadeDialog(false));
-
-    findViewById(R.id.btnReverse).setOnClickListener(v -> {
-      if (wave.hasSelection()) {
-        clip.reverseRange(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
-      } else {
-        clip.reverse(applyL(), applyR());
-      }
-      refreshAfterChange();
-    });
-
-    findViewById(R.id.btnInvert).setOnClickListener(v -> {
-      if (wave.hasSelection()) {
-        clip.invertPhase(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
-      } else {
-        clip.invertPhase(0, clip.frameCount(), applyL(), applyR());
-      }
-      refreshAfterChange();
-    });
-
-    findViewById(R.id.btnMarker).setOnClickListener(v -> {
-      if (wave.hasSelection()) {
-        clip.addMarker(wave.getSelStart());
-        clip.addMarker(wave.getSelEnd());
-      } else {
-        int f = player.getCurrentFrame();
-        if (wave.isZeroCrossingSnap() && clip.pcm != null) {
-          f = com.grinya.voicesampleprep.util.AudioOps.nearestZeroCrossing(clip.pcm, f);
+      popup.setOnMenuItemClickListener(item -> {
+        String actionName = item.getTitle().toString();
+        if (!recentActions.contains(actionName)) {
+          recentActions.add(0, actionName);
+          if (recentActions.size() > 2)
+            recentActions.remove(2);
+          updateDynamicButtons();
         }
-        clip.addMarker(f);
-      }
-      wave.updateMarkers(clip.markers);
-      isChanged = true;
-    });
-    findViewById(R.id.btnMarker).setOnLongClickListener(v -> {
-      showMarkerList();
-      return true;
-    });
-  }
 
-  private void wireProcessTools() {
-    findViewById(R.id.btnDenoise).setOnClickListener(v -> {
-      if (clip.pcm == null || clip.pcm.length == 0)
-        return;
-      int start = wave.hasSelection() ? wave.getSelStart() : 0;
-      int end = wave.hasSelection() ? wave.getSelEnd() : clip.frameCount();
-      float[] range = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, start, end);
-      Toast.makeText(this, "Обработка Denoise...", Toast.LENGTH_SHORT).show();
-      new Thread(() -> {
-        try {
-          float[] denoised = com.grinya.voicesampleprep.util.Denoiser.denoiseStereo(range);
-          runOnUiThread(() -> {
-            clip.insert(denoised, start, start, end);
+        switch (item.getItemId()) {
+          case 1: // Denoise
+            if (clip.pcm == null || clip.pcm.length == 0)
+              return true;
+            int start = wave.hasSelection() ? wave.getSelStart() : 0;
+            int end = wave.hasSelection() ? wave.getSelEnd() : clip.frameCount();
+            float[] range = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, start, end);
+            Toast.makeText(this, "Обработка Denoise...", Toast.LENGTH_SHORT).show();
+            new Thread(() -> {
+              try {
+                float[] denoised = com.grinya.voicesampleprep.util.Denoiser.denoiseStereo(range);
+                runOnUiThread(() -> {
+                  clip.insert(denoised, start, start, end);
+                  refreshAfterChange();
+                  Toast.makeText(this, "Denoise готов", Toast.LENGTH_SHORT).show();
+                });
+              } catch (Throwable e) {
+                runOnUiThread(() -> Toast
+                    .makeText(this, "Ошибка Denoise: " + e.getMessage(), Toast.LENGTH_LONG).show());
+              }
+            }).start();
+            return true;
+          case 2: // Auto-Trim
+            if (wave.hasSelection())
+              clip.autoTrim(wave.getSelStart(), wave.getSelEnd(), 0.001f, applyL(), applyR());
+            else
+              clip.autoTrim(0, clip.frameCount(), 0.001f, applyL(), applyR());
+            wave.clearSelection();
             refreshAfterChange();
-            Toast.makeText(this, "Denoise готов", Toast.LENGTH_SHORT).show();
-          });
-        } catch (Throwable e) {
-          runOnUiThread(
-              () -> Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show());
+            Toast.makeText(this, "Тишина обрезана", Toast.LENGTH_SHORT).show();
+            return true;
+          case 3: // Channels
+            boolean l = applyL();
+            boolean r = applyR();
+            if (l && r) {
+              if (wave.hasSelection())
+                clip.swapChannels(wave.getSelStart(), wave.getSelEnd());
+              else
+                clip.swapChannels(0, clip.frameCount());
+              Toast.makeText(this, "L ↔ R", Toast.LENGTH_SHORT).show();
+            } else if (l) {
+              if (wave.hasSelection())
+                clip.copyRtoL(wave.getSelStart(), wave.getSelEnd());
+              else
+                clip.copyRtoL(0, clip.frameCount());
+              Toast.makeText(this, "R → L", Toast.LENGTH_SHORT).show();
+            } else if (r) {
+              if (wave.hasSelection())
+                clip.copyLtoR(wave.getSelStart(), wave.getSelEnd());
+              else
+                clip.copyLtoR(0, clip.frameCount());
+              Toast.makeText(this, "L → R", Toast.LENGTH_SHORT).show();
+            }
+            refreshAfterChange();
+            return true;
+          case 4: // Insert
+            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType("*/*");
+            i.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "audio/wav", "audio/x-wav",
+                "audio/mpeg", "audio/mp4", "audio/aac", "audio/flac", "audio/x-flac", "audio/*" });
+            startActivityForResult(i, REQ_INSERT);
+            return true;
+          case 5: // Silence
+            if (!requireSelection())
+              return true;
+            clip.silence(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
+            refreshAfterChange();
+            return true;
+          case 6: // Gain
+            showGainDialog();
+            return true;
+          case 7: // Normalize
+            showNormalizeDialog();
+            return true;
+          case 8: // Fade In
+            showFadeDialog(true);
+            return true;
+          case 9: // Fade Out
+            showFadeDialog(false);
+            return true;
+          case 10: // Reverse
+            if (wave.hasSelection())
+              clip.reverseRange(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
+            else
+              clip.reverse(applyL(), applyR());
+            refreshAfterChange();
+            return true;
+          case 11: // Invert
+            if (wave.hasSelection())
+              clip.invertPhase(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
+            else
+              clip.invertPhase(0, clip.frameCount(), applyL(), applyR());
+            refreshAfterChange();
+            return true;
+          case 12: // To Mono
+            if (wave.hasSelection())
+              clip.mixToMonoRange(wave.getSelStart(), wave.getSelEnd());
+            else
+              clip.mixToMonoRange(0, clip.frameCount());
+            refreshAfterChange();
+            return true;
         }
-      }).start();
-    });
-
-    findViewById(R.id.btnAutoTrim).setOnClickListener(v -> {
-      if (wave.hasSelection()) {
-        clip.autoTrim(wave.getSelStart(), wave.getSelEnd(), 0.001f, applyL(), applyR());
-      } else {
-        clip.autoTrim(0, clip.frameCount(), 0.001f, applyL(), applyR());
-      }
-      wave.clearSelection();
-      refreshAfterChange();
-      Toast.makeText(this, "Тишина обрезана", Toast.LENGTH_SHORT).show();
-    });
-
-    findViewById(R.id.btnMono).setOnClickListener(v -> {
-      if (wave.hasSelection()) {
-        clip.mixToMonoRange(wave.getSelStart(), wave.getSelEnd());
-      } else {
-        clip.mixToMonoRange(0, clip.frameCount());
-      }
-      refreshAfterChange();
-      Toast.makeText(this, "Сведено в моно", Toast.LENGTH_SHORT).show();
-    });
-    findViewById(R.id.btnChannels).setOnClickListener(v -> {
-      boolean applyL = applyL();
-      boolean applyR = applyR();
-
-      if (applyL && applyR) {
-        // Оба канала: меняем местами
-        if (wave.hasSelection()) {
-          clip.swapChannels(wave.getSelStart(), wave.getSelEnd());
-        } else {
-          clip.swapChannels(0, clip.frameCount());
-        }
-        Toast.makeText(this, "L ↔ R", Toast.LENGTH_SHORT).show();
-      } else if (applyL) {
-        // Только L включен: копируем R в L
-        if (wave.hasSelection()) {
-          clip.copyRtoL(wave.getSelStart(), wave.getSelEnd());
-        } else {
-          clip.copyRtoL(0, clip.frameCount());
-        }
-        Toast.makeText(this, "R → L", Toast.LENGTH_SHORT).show();
-      } else if (applyR) {
-        // Только R включен: копируем L в R
-        if (wave.hasSelection()) {
-          clip.copyLtoR(wave.getSelStart(), wave.getSelEnd());
-        } else {
-          clip.copyLtoR(0, clip.frameCount());
-        }
-        Toast.makeText(this, "L → R", Toast.LENGTH_SHORT).show();
-      }
-      refreshAfterChange();
+        return false;
+      });
+      popup.show();
     });
   }
-
   // ---------- диалоги ----------
 
   private void showGainDialog() {

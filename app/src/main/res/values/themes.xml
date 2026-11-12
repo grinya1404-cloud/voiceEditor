@@ -9,4 +9,13 @@
         <item name="colorOnSurface">#E8E8EA</item>
         <item name="android:statusBarColor">#0E0E10</item>
     </style>
+
+    <style name="AmberButton" parent="Widget.AppCompat.Button.Small">
+        <item name="android:background">@drawable/bg_button</item>
+        <item name="android:textColor">@color/bg</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:minHeight">36dp</item>
+        <item name="android:minWidth">42dp</item> <!-- Добавили минимальную ширину -->
+        <item name="android:gravity">center</item> <!-- Чтобы текст был по центру -->
+    </style>
 </resources>

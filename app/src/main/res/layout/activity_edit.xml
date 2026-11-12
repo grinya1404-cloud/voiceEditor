@@ -179,130 +179,78 @@
     </FrameLayout>
 
     <!-- Панель инструментов (горизонтальный скролл) -->
-    <HorizontalScrollView
-        android:layout_width="match_parent"
+    <!-- Панель инструментов (горизонтальный скролл) -->
+<!-- Панель инструментов (растянута на всю ширину) -->
+<LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:background="@color/surface"
+    android:padding="6dp"
+    android:gravity="center_vertical">
+
+    <TextView
+        android:id="@+id/btnTrim"
+        style="@style/AmberButton"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="@color/surface"
-        android:scrollbars="none">
+        android:layout_weight="1"
+        android:layout_marginEnd="4dp"
+        android:text="@string/trim" />
 
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:padding="6dp">
+    <TextView
+        android:id="@+id/btnCut"
+        style="@style/AmberButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginEnd="4dp"
+        android:text="@string/cut" />
 
-            <Button
-                android:id="@+id/btnTrim"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/trim" />
+    <TextView
+        android:id="@+id/btnCopy"
+        style="@style/AmberButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginEnd="4dp"
+        android:text="@string/copy" />
 
-            <Button
-                android:id="@+id/btnAutoTrim"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/auto_trim" />
+    <TextView
+        android:id="@+id/btnPaste"
+        style="@style/AmberButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginEnd="4dp"
+        android:text="@string/paste" />
 
-            <Button
-                android:id="@+id/btnCopy"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/copy_1" />
+    <TextView
+        android:id="@+id/btnDynamic1"
+        style="@style/AmberButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginEnd="4dp"
+        android:visibility="gone"
+        android:text="" />
 
-            <Button
-                android:id="@+id/btnCut"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/cut" />
+    <TextView
+        android:id="@+id/btnDynamic2"
+        style="@style/AmberButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginEnd="4dp"
+        android:visibility="gone"
+        android:text="" />
 
-            <Button
-                android:id="@+id/btnPaste"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/paste_1" />
-
-            <Button
-                android:id="@+id/btnInsert"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/insert" />
-
-            <Button
-                android:id="@+id/btnSilence"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/silence" />
-
-            <Button
-                android:id="@+id/btnGain"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/gain" />
-
-            <Button
-                android:id="@+id/btnNormalize"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/normalize" />
-
-            <Button
-                android:id="@+id/btnDenoise"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/denoise" />
-
-            <Button
-                android:id="@+id/btnMono"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/to_mono" />
-
-            <Button
-                android:id="@+id/btnChannels"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/channels_1" />
-
-            <Button
-                android:id="@+id/btnFadeIn"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/fade_in" />
-
-            <Button
-                android:id="@+id/btnFadeOut"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/fade_out" />
-
-            <Button
-                android:id="@+id/btnReverse"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/reverse" />
-
-            <Button
-                android:id="@+id/btnInvert"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/invert" />
-
-        </LinearLayout>
-    </HorizontalScrollView>
+    <TextView
+        android:id="@+id/btnMore"
+        style="@style/AmberButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="⋮" />
+</LinearLayout>
 </LinearLayout>

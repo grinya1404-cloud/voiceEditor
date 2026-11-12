@@ -65,6 +65,14 @@ public class BankActivity extends AppCompatActivity {
       RecordActivity.currentBank = currentBank;
       startActivity(new Intent(this, RecordActivity.class));
     });
+    findViewById(R.id.btnExportBank).setOnClickListener(v -> {
+      if (currentBank == null || currentBank.clips.isEmpty()) {
+        Toast.makeText(this, "Банк пуст", Toast.LENGTH_SHORT).show();
+        return;
+      }
+      ExportActivity.setBankSource(currentBank.clips, currentBank.name);
+      startActivity(new Intent(this, ExportActivity.class));
+    });
     findViewById(R.id.fabImport).setOnClickListener(v -> {
       Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
       i.addCategory(Intent.CATEGORY_OPENABLE);
@@ -144,6 +152,182 @@ public class BankActivity extends AppCompatActivity {
     }).start();
   }
 
+  private void copyFile(File src, File dst) throws Exception {
+    try (java.io.FileInputStream in = new java.io.FileInputStream(src);
+        java.io.FileOutputStream out = new java.io.FileOutputStream(dst)) {
+      byte[] buf = new byte[8192];
+      int n;
+      while ((n = in.read(buf)) > 0) {
+        out.write(buf, 0, n);
+      }
+    }
+  }
+
+  private void renameClip(AudioClip clip) {
+    EditText input = new EditText(this);
+    String nameOnly = clip.name.endsWith(".wav") ? clip.name.substring(0, clip.name.length() - 4)
+        : clip.name;
+    input.setText(nameOnly);
+    input.setSelection(input.getText().length());
+
+    new AlertDialog.Builder(this).setTitle("Новое имя").setView(input)
+        .setPositiveButton("OK", (d, w) -> {
+          String newName = input.getText().toString().trim();
+          if (newName.isEmpty() || clip.dir == null)
+            return;
+
+          String safe = newName.replaceAll("[\\\\/:*?\"<>|]", "_");
+          File newFile = new File(clip.dir.getParent(), safe + ".wav");
+
+          if (newFile.exists()) {
+            Toast.makeText(this, "Файл с таким именем уже есть", Toast.LENGTH_SHORT).show();
+            return;
+          }
+
+          if (clip.dir.renameTo(newFile)) {
+            File oldMeta = new File(clip.dir.getAbsolutePath() + ".meta");
+            File newMeta = new File(newFile.getAbsolutePath() + ".meta");
+            if (oldMeta.exists())
+              oldMeta.renameTo(newMeta);
+            reload();
+          } else {
+            Toast.makeText(this, "Ошибка переименования", Toast.LENGTH_SHORT).show();
+          }
+        }).setNegativeButton("Отмена", null).show();
+  }
+
+  private void moveClip(AudioClip clip) {
+    showBankPicker("Переместить в банк", (targetBank) -> {
+      if (currentBank != null && targetBank.name.equals(currentBank.name)) {
+        Toast.makeText(this, "Это текущий банк", Toast.LENGTH_SHORT).show();
+        return;
+      }
+      new Thread(() -> {
+        try {
+          File srcWav = clip.dir;
+          File srcMeta = new File(srcWav.getAbsolutePath() + ".meta");
+          File dstWav = new File(targetBank.dir, srcWav.getName());
+          File dstMeta = new File(targetBank.dir, srcMeta.getName());
+
+          if (srcWav.renameTo(dstWav)) {
+            if (srcMeta.exists())
+              srcMeta.renameTo(dstMeta);
+            runOnUiThread(() -> {
+              Toast.makeText(this, "Перемещено в " + targetBank.name, Toast.LENGTH_SHORT).show();
+              reload();
+            });
+          } else {
+            runOnUiThread(
+                () -> Toast.makeText(this, "Ошибка перемещения", Toast.LENGTH_SHORT).show());
+          }
+        } catch (Exception e) {
+          runOnUiThread(
+              () -> Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show());
+        }
+      }).start();
+    });
+  }
+
+  private void copyClip(AudioClip clip) {
+    showBankPicker("Копировать в банк", (targetBank) -> {
+      new Thread(() -> {
+        try {
+          File srcWav = clip.dir;
+          File srcMeta = new File(srcWav.getAbsolutePath() + ".meta");
+
+          String baseName = srcWav.getName();
+          if (baseName.toLowerCase().endsWith(".wav")) {
+            baseName = baseName.substring(0, baseName.length() - 4);
+          }
+
+          boolean isSameBank = currentBank != null && targetBank.name.equals(currentBank.name);
+
+          String newName = baseName;
+          if (isSameBank) {
+            // Если копируем в тот же банк, генерируем новое имя
+            int counter = 1;
+            File testFile = new File(targetBank.dir, newName + "_copy.wav");
+            while (testFile.exists()) {
+              counter++;
+              testFile = new File(targetBank.dir, newName + "_copy" + counter + ".wav");
+            }
+            newName = newName + "_copy" + (counter > 1 ? String.valueOf(counter) : "");
+          }
+
+          File dstWav = new File(targetBank.dir, newName + ".wav");
+          File dstMeta = new File(targetBank.dir, newName + ".wav.meta");
+
+          // Если в целевом банке уже есть файл с таким именем (при копировании в другой банк)
+          if (!isSameBank && dstWav.exists()) {
+            int counter = 1;
+            File testFile = new File(targetBank.dir, baseName + "_" + counter + ".wav");
+            while (testFile.exists()) {
+              counter++;
+              testFile = new File(targetBank.dir, baseName + "_" + counter + ".wav");
+            }
+            dstWav = testFile;
+            dstMeta = new File(targetBank.dir, testFile.getName() + ".meta");
+          }
+
+          copyFile(srcWav, dstWav);
+          if (srcMeta.exists())
+            copyFile(srcMeta, dstMeta);
+
+          final String finalName = dstWav.getName();
+          runOnUiThread(() -> {
+            Toast.makeText(this, "Скопировано: " + finalName, Toast.LENGTH_SHORT).show();
+            reload(); // Обновить список (если копировали в текущий банк)
+          });
+        } catch (Exception e) {
+          runOnUiThread(
+              () -> Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show());
+        }
+      }).start();
+    });
+  }
+
+  private void showClipInfo(AudioClip clip) {
+    new Thread(() -> {
+      try {
+        AudioClip full = bankManager.loadClip(clip.dir);
+        runOnUiThread(() -> AudioInfoDialog.show(this, full, -1, -1));
+      } catch (Exception e) {
+        runOnUiThread(() -> Toast.makeText(this, "Ошибка загрузки", Toast.LENGTH_SHORT).show());
+      }
+    }).start();
+  }
+
+  private void deleteClip(AudioClip clip) {
+    new AlertDialog.Builder(this).setTitle("Удалить клип?").setMessage(clip.name)
+        .setPositiveButton("Удалить", (d, w) -> {
+          if (clip.dir != null) {
+            clip.dir.delete();
+            File meta = new File(clip.dir.getAbsolutePath() + ".meta");
+            if (meta.exists())
+              meta.delete();
+          }
+          reload();
+        }).setNegativeButton("Отмена", null).show();
+  }
+
+  private void showBankPicker(String title, BankPickerCallback callback) {
+    List<Bank> allBanks = bankManager.listBanks();
+    if (allBanks.isEmpty()) {
+      Toast.makeText(this, "Нет банков", Toast.LENGTH_SHORT).show();
+      return;
+    }
+
+    String[] names = new String[allBanks.size()];
+    for (int i = 0; i < allBanks.size(); i++) {
+      Bank b = allBanks.get(i);
+      names[i] = b.name
+          + (currentBank != null && b.name.equals(currentBank.name) ? " (текущий)" : "");
+    }
+
+    new AlertDialog.Builder(this).setTitle(title).setItems(names, (d, which) -> {
+      callback.onBankSelected(allBanks.get(which));
+    }).setNegativeButton("Отмена", null).show();
+  }
   // ---------- adapter ----------
 
   private class ClipAdapter extends RecyclerView.Adapter<ClipAdapter.VH> {
@@ -169,71 +353,30 @@ public class BankActivity extends AppCompatActivity {
       h.itemView.setOnClickListener(v -> openClip(c));
       h.itemView.setOnLongClickListener(v -> {
         new AlertDialog.Builder(BankActivity.this).setTitle(c.name)
-            .setItems(new String[] { "Переименовать", "Инфо", "Удалить" }, (d, which) -> {
-              if (which == 0) {
-                // --- ПЕРЕИМЕНОВАТЬ ---
-                EditText input = new EditText(BankActivity.this);
-                String nameOnly = c.name.endsWith(".wav") ? c.name.substring(0, c.name.length() - 4)
-                    : c.name;
-                input.setText(nameOnly);
-                input.setSelection(input.getText().length()); // Курсор в конец
-
-                new AlertDialog.Builder(BankActivity.this).setTitle("Новое имя").setView(input)
-                    .setPositiveButton("OK", (dd, ww) -> {
-                      String newName = input.getText().toString().trim();
-                      if (!newName.isEmpty() && c.dir != null) {
-                        String safe = newName.replaceAll("[\\\\/:*?\"<>|]", "_");
-                        File newFile = new File(c.dir.getParent(), safe + ".wav");
-
-                        // Проверяем, не существует ли уже такой файл
-                        if (newFile.exists()) {
-                          Toast.makeText(BankActivity.this, "Файл с таким именем уже есть",
-                              Toast.LENGTH_SHORT).show();
-                          return;
-                        }
-
-                        if (c.dir.renameTo(newFile)) {
-                          // Переименовываем и .meta файл
-                          File oldMeta = new File(c.dir.getAbsolutePath() + ".meta");
-                          File newMeta = new File(newFile.getAbsolutePath() + ".meta");
-                          if (oldMeta.exists())
-                            oldMeta.renameTo(newMeta);
-
-                          reload(); // Обновить список
-                        } else {
-                          Toast.makeText(BankActivity.this, "Ошибка переименования",
-                              Toast.LENGTH_SHORT).show();
-                        }
-                      }
-                    }).setNegativeButton("Отмена", null).show();
-
-              } else if (which == 1) {
-                // --- ИНФО ---
-                new Thread(() -> {
-                  try {
-                    AudioClip full = bankManager.loadClip(c.dir);
-                    runOnUiThread(() -> AudioInfoDialog.show(BankActivity.this, full, -1, -1));
-                  } catch (Exception e) {
-                    runOnUiThread(() -> Toast
-                        .makeText(BankActivity.this, "Ошибка загрузки", Toast.LENGTH_SHORT).show());
+            .setItems(new String[] { "Переименовать", "Переместить в банк", "Копировать в банк",
+                "Инфо", "Удалить" }, (d, which) -> {
+                  switch (which) {
+                    case 0:
+                      renameClip(c);
+                      break;
+                    case 1:
+                      moveClip(c);
+                      break;
+                    case 2:
+                      copyClip(c);
+                      break;
+                    case 3:
+                      showClipInfo(c);
+                      break;
+                    case 4:
+                      deleteClip(c);
+                      break;
                   }
-                }).start();
-              } else {
-                // --- УДАЛИТЬ ---
-                new AlertDialog.Builder(BankActivity.this).setTitle("Удалить клип?")
-                    .setMessage(c.name).setPositiveButton("Удалить", (dd, ww) -> {
-                      if (c.dir != null)
-                        c.dir.delete();
-                      // Удаляем и .meta
-                      File meta = new File(c.dir.getAbsolutePath() + ".meta");
-                      if (meta.exists())
-                        meta.delete();
-                      reload();
-                    }).setNegativeButton("Отмена", null).show();
-              }
-            }).show();
+                })
+            .show();
         return true;
       });
+
     }
 
     @Override
@@ -251,4 +394,9 @@ public class BankActivity extends AppCompatActivity {
       }
     }
   }
+
+  public interface BankPickerCallback {
+    void onBankSelected(Bank bank);
+  }
+
 }

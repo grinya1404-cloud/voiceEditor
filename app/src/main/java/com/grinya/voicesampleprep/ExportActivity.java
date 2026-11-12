@@ -5,34 +5,32 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
-import android.view.View;
-import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.RadioButton;
 import android.widget.Toast;
-
 import androidx.appcompat.app.AppCompatActivity;
-
 import com.grinya.voicesampleprep.audio.WavWriter;
 import com.grinya.voicesampleprep.model.AudioClip;
-import com.grinya.voicesampleprep.util.AudioOps;
 import com.grinya.voicesampleprep.model.AudioMeta;
-
+import com.grinya.voicesampleprep.model.BankManager;
+import com.grinya.voicesampleprep.util.AudioOps;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import android.widget.RadioGroup;
 
 public class ExportActivity extends AppCompatActivity {
 
   private static final int REQ_TREE = 3001;
 
+  private static java.util.List<com.grinya.voicesampleprep.model.AudioClip> bankClips;
+  private static String bankName;
+
   private static AudioClip source;
   private static int selStart = -1;
   private static int selEnd = -1;
   private AudioMeta originalMeta;
+  private final java.util.ArrayList<String> recentActions = new java.util.ArrayList<>();
 
   public static void setSource(AudioClip clip, int s, int e) {
     source = clip;
@@ -43,64 +41,73 @@ public class ExportActivity extends AppCompatActivity {
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
-    if (source == null) {
+    if (source == null && (bankClips == null || bankClips.isEmpty())) {
       finish();
       return;
     }
     setContentView(R.layout.activity_export);
-    // Загружаем .meta для умного экспорта
-    originalMeta = AudioMeta.load(source.dir);
 
-    // Автоматически ставим рекомендуемые параметры
-    if (originalMeta.channels == 1) {
-      ((RadioButton) findViewById(R.id.rbTrueMono)).setChecked(true);
-    } else if (originalMeta.channels == 2) {
-      ((RadioButton) findViewById(R.id.rbStereo)).setChecked(true);
-    }
-    if (originalMeta.sampleRate == 44100) {
-      ((RadioButton) findViewById(R.id.rb441)).setChecked(true);
-    } else if (originalMeta.sampleRate == 48000) {
-      ((RadioButton) findViewById(R.id.rb48)).setChecked(true);
-    }
-    if (originalMeta.bits == 24) {
-      ((RadioButton) findViewById(R.id.rb24)).setChecked(true);
-    } else if (originalMeta.bits == 16) {
-      ((RadioButton) findViewById(R.id.rb16)).setChecked(true);
-    }
+    if (source != null) {
+      bankClips = null; // сбрасываем режим банка
+      // Загружаем .meta для умного экспорта
+      originalMeta = AudioMeta.load(source.dir);
 
-    // Показываем подсказку, если параметры отличаются от дефолтов
-    if (originalMeta.sampleRate != 0 && (originalMeta.sampleRate != 48000
-        || originalMeta.channels != 2 || originalMeta.bits != 16)) {
-      String hint = "Исходный файл: "
-          + (originalMeta.sampleRate == 44100 ? "44.1 кГц" : originalMeta.sampleRate + " Гц") + ", "
-          + (originalMeta.channels == 1 ? "моно" : "стерео")
-          + (originalMeta.bits > 0 ? ", " + originalMeta.bits + "-bit" : "")
-          + ". Рекомендуется экспортировать так же.";
-      Toast.makeText(this, hint, Toast.LENGTH_LONG).show();
-    }
+      // Автоматически ставим рекомендуемые параметры
+      if (originalMeta.channels == 1) {
+        ((RadioButton) findViewById(R.id.rbTrueMono)).setChecked(true);
+      } else if (originalMeta.channels == 2) {
+        ((RadioButton) findViewById(R.id.rbStereo)).setChecked(true);
+      }
+      if (originalMeta.sampleRate == 44100) {
+        ((RadioButton) findViewById(R.id.rb441)).setChecked(true);
+      } else if (originalMeta.sampleRate == 48000) {
+        ((RadioButton) findViewById(R.id.rb48)).setChecked(true);
+      }
+      if (originalMeta.bits == 24) {
+        ((RadioButton) findViewById(R.id.rb24)).setChecked(true);
+      } else if (originalMeta.bits == 16) {
+        ((RadioButton) findViewById(R.id.rb16)).setChecked(true);
+      }
 
-    if (selStart >= 0 && selEnd > selStart) {
-      // Считаем длительность выделения в миллисекундах
-      int durationMs = (selEnd - selStart) * 1000 / source.sampleRate;
-      int m = durationMs / 60000;
-      int s = (durationMs % 60000) / 1000;
-      int r = durationMs % 1000;
-      String timeStr = String.format(java.util.Locale.US, "%02d:%02d.%03d", m, s, r);
+      // Показываем подсказку, если параметры отличаются от дефолтов
+      if (originalMeta.sampleRate != 0 && (originalMeta.sampleRate != 48000
+          || originalMeta.channels != 2 || originalMeta.bits != 16)) {
+        String hint = "Исходный файл: "
+            + (originalMeta.sampleRate == 44100 ? "44.1 кГц" : originalMeta.sampleRate + " Гц")
+            + ", " + (originalMeta.channels == 1 ? "моно" : "стерео")
+            + (originalMeta.bits > 0 ? ", " + originalMeta.bits + "-bit" : "")
+            + ". Рекомендуется экспортировать так же.";
+        Toast.makeText(this, hint, Toast.LENGTH_LONG).show();
+      }
 
-      ((RadioButton) findViewById(R.id.rbSingle)).setText("Один файл (выделение " + timeStr + ")");
+      // Настройка для одного файла
+      if (selStart >= 0 && selEnd > selStart) {
+        int durationMs = (selEnd - selStart) * 1000 / source.sampleRate;
+        int m = durationMs / 60000;
+        int s = (durationMs % 60000) / 1000;
+        int r = durationMs % 1000;
+        String timeStr = String.format(java.util.Locale.US, "%02d:%02d.%03d", m, s, r);
+        ((RadioButton) findViewById(R.id.rbSingle))
+            .setText("Один файл (выделение " + timeStr + ")");
+      } else {
+        ((RadioButton) findViewById(R.id.rbSingle)).setText("Один файл (весь клип)");
+      }
+
+      if (source.markers.size() < 2) {
+        ((RadioButton) findViewById(R.id.rbByMarkers)).setEnabled(false);
+        ((RadioButton) findViewById(R.id.rbByMarkers)).setText("По маркерам (нужно ≥ 2 маркера)");
+      }
     } else {
+      // Режим банка
+      originalMeta = new AudioMeta(); // Пустая мета для безопасности
       ((RadioButton) findViewById(R.id.rbSingle)).setText("Один файл (весь клип)");
-    }
-
-    if (source.markers.size() < 2) {
-      ((RadioButton) findViewById(R.id.rbByMarkers)).setEnabled(false);
-      ((RadioButton) findViewById(R.id.rbByMarkers)).setText("По маркерам (нужно ≥ 2 маркера)");
+      // При экспорте банка "По маркерам" доступно (там будут проверяться маркеры каждого клипа)
     }
 
     findViewById(R.id.btnExport).setOnClickListener(v -> startExport());
     findViewById(R.id.btnCancel).setOnClickListener(v -> finish());
+
     findViewById(R.id.btnDefaults).setOnClickListener(v -> {
-      // Наши дефолты: 48к, Stereo, 16-bit
       ((RadioButton) findViewById(R.id.rb48)).setChecked(true);
       ((RadioButton) findViewById(R.id.rbStereo)).setChecked(true);
       ((RadioButton) findViewById(R.id.rb16)).setChecked(true);
@@ -145,15 +152,19 @@ public class ExportActivity extends AppCompatActivity {
   }
 
   private void doExport(Uri treeUri) {
-    // 1. Читаем настройки
     ExportSettings settings = readSettings();
 
-    // 2. Собираем диапазоны
+    if (bankClips != null && !bankClips.isEmpty()) {
+      // Режим экспорта всего банка
+      exportBank(treeUri, settings);
+      return;
+    }
+
+    // Режим одного файла (как было)
     List<int[]> ranges = buildRanges(settings.byMarkers);
     if (ranges.isEmpty())
       return;
 
-    // 3. Экспортируем
     final String baseName = stripExt(source.name);
     final List<String> written = new ArrayList<>();
     final int[] failed = { 0 };
@@ -165,18 +176,63 @@ public class ExportActivity extends AppCompatActivity {
         int[] r = ranges.get(idx);
         String fileName = "";
         try {
-          fileName = exportSingleRange(treeUri, dir, baseName, r, idx + 1, settings);
-          if (fileName != null) {
+          fileName = exportSingleRangeFromClip(treeUri, dir, source, r, idx + 1, settings);
+          if (fileName != null)
             written.add(fileName);
-          } else {
+          else
             failed[0]++;
-          }
         } catch (Exception e) {
           android.util.Log.e("EXPORT", "Failed for " + fileName, e);
           failed[0]++;
         }
       }
+      runOnUiThread(() -> showExportResult(written.size(), failed[0]));
+    }).start();
+  }
 
+  private void exportBank(Uri treeUri, ExportSettings settings) {
+    final List<String> written = new ArrayList<>();
+    final int[] failed = { 0 };
+    androidx.documentfile.provider.DocumentFile dir = androidx.documentfile.provider.DocumentFile
+        .fromTreeUri(this, treeUri);
+
+    new Thread(() -> {
+      for (AudioClip clip : bankClips) {
+        try {
+          // Если у клипа есть маркеры и выбран режим "по маркерам"
+          if (settings.byMarkers && clip.markers != null && clip.markers.size() >= 2) {
+            // Загружаем клип (если нужно, т.к. в списке банка только метаданные)
+            AudioClip fullClip = new BankManager(this).loadClip(clip.dir);
+            List<Integer> all = new ArrayList<>(fullClip.markers);
+            java.util.TreeSet<Integer> ts = new java.util.TreeSet<>(all);
+            Integer[] arr = ts.toArray(new Integer[0]);
+
+            for (int i = 0; i < arr.length - 1; i++) {
+              if (arr[i + 1] > arr[i]) {
+                int[] r = { arr[i], arr[i + 1] };
+                String fileName = exportSingleRangeFromClip(treeUri, dir, fullClip, r, i + 1,
+                    settings);
+                if (fileName != null)
+                  written.add(fileName);
+                else
+                  failed[0]++;
+              }
+            }
+          } else {
+            // Экспортируем весь клип как один файл
+            AudioClip fullClip = new BankManager(this).loadClip(clip.dir);
+            int[] r = { 0, fullClip.frameCount() };
+            String fileName = exportSingleRangeFromClip(treeUri, dir, fullClip, r, 1, settings);
+            if (fileName != null)
+              written.add(fileName);
+            else
+              failed[0]++;
+          }
+        } catch (Exception e) {
+          android.util.Log.e("EXPORT", "Failed for " + clip.name, e);
+          failed[0]++;
+        }
+      }
       runOnUiThread(() -> showExportResult(written.size(), failed[0]));
     }).start();
   }
@@ -238,14 +294,15 @@ public class ExportActivity extends AppCompatActivity {
     return ranges;
   }
 
-  private String exportSingleRange(Uri treeUri, androidx.documentfile.provider.DocumentFile dir,
-      String baseName, int[] r, int index, ExportSettings s) throws Exception {
-    float[] rangePcm = com.grinya.voicesampleprep.util.AudioOps.trim(source.pcm, r[0], r[1]);
+  private String exportSingleRangeFromClip(Uri treeUri,
+      androidx.documentfile.provider.DocumentFile dir, AudioClip clip, int[] r, int index,
+      ExportSettings s) throws Exception {
+    float[] rangePcm = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, r[0], r[1]);
 
-    // Имя
-    String nameNoExt = buildName(s.nameTemplate, baseName, index);
-    if (nameNoExt.toLowerCase().endsWith(".wav"))
+    String nameNoExt = buildName(s.nameTemplate, stripExt(clip.name), index);
+    if (nameNoExt.toLowerCase().endsWith(".wav")) {
       nameNoExt = nameNoExt.substring(0, nameNoExt.length() - 4);
+    }
     String fileName = getUniqueName(dir, nameNoExt, ".wav");
 
     Uri fileUri = createFile(treeUri, fileName);
@@ -253,12 +310,9 @@ public class ExportActivity extends AppCompatActivity {
       return null;
 
     java.io.File tmp = new java.io.File(getCacheDir(), "exp_tmp.wav");
+    com.grinya.voicesampleprep.audio.WavWriter.write(tmp, rangePcm, clip.sampleRate, s.rate, s.bits,
+        s.stereoMono, s.trueMono, s.normalize, s.fade, s.trimSilence, s.denoise);
 
-    // Вызов WavWriter
-    com.grinya.voicesampleprep.audio.WavWriter.write(tmp, rangePcm, source.sampleRate, s.rate,
-        s.bits, s.stereoMono, s.trueMono, s.normalize, s.fade, s.trimSilence, s.denoise);
-
-    // Копируем
     try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(fileUri, "w");
         FileOutputStream out = new FileOutputStream(pfd.getFileDescriptor());
         java.io.FileInputStream in = new java.io.FileInputStream(tmp)) {
@@ -270,6 +324,7 @@ public class ExportActivity extends AppCompatActivity {
     tmp.delete();
     return fileName;
   }
+
 
   private void showExportResult(int written, int failed) {
     String msg = "Экспортировано: " + written;
@@ -325,5 +380,12 @@ public class ExportActivity extends AppCompatActivity {
       counter++;
     }
     return name;
+  }
+
+  public static void setBankSource(java.util.List<com.grinya.voicesampleprep.model.AudioClip> clips,
+      String name) {
+    bankClips = clips;
+    bankName = name;
+    source = null; // сбрасываем одиночный источник
   }
 }
