@@ -481,4 +481,66 @@ public final class AudioOps {
     return out;
   }
 
+  /**
+   * High-Pass фильтр (Баттерворт 2-го порядка).
+   * 
+   * @param pcm        стерео-массив (L,R,L,R...)
+   * @param sampleRate частота дискретизации (48000)
+   * @param cutoffHz   частота среза (например, 80 Гц)
+   * @param applyL     применять к левому каналу
+   * @param applyR     применять к правому каналу
+   */
+  public static float[] highPass(float[] pcm, int sampleRate, float cutoffHz, boolean applyL,
+      boolean applyR) {
+    int frames = pcm.length / 2;
+    float[] out = pcm.clone();
+
+    // Коэффициенты для Баттерворта 2-го порядка
+    double w0 = 2.0 * Math.PI * cutoffHz / sampleRate;
+    double cosW0 = Math.cos(w0);
+    double sinW0 = Math.sin(w0);
+    double alpha = sinW0 / (2.0 * Math.sqrt(2.0)); // Q = 1/√2 для Баттерворта
+
+    double b0 = (1 + cosW0) / 2;
+    double b1 = -(1 + cosW0);
+    double b2 = (1 + cosW0) / 2;
+    double a0 = 1 + alpha;
+    double a1 = -2 * cosW0;
+    double a2 = 1 - alpha;
+
+    // Нормируем коэффициенты
+    b0 /= a0;
+    b1 /= a0;
+    b2 /= a0;
+    a1 /= a0;
+    a2 /= a0;
+
+    // Применяем фильтр к каналам
+    if (applyL) {
+      double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+      for (int i = 0; i < frames; i++) {
+        double x = out[i * 2];
+        double y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+        x2 = x1;
+        x1 = x;
+        y2 = y1;
+        y1 = y;
+        out[i * 2] = (float) y;
+      }
+    }
+    if (applyR) {
+      double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+      for (int i = 0; i < frames; i++) {
+        double x = out[i * 2 + 1];
+        double y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+        x2 = x1;
+        x1 = x;
+        y2 = y1;
+        y1 = y;
+        out[i * 2 + 1] = (float) y;
+      }
+    }
+    return out;
+  }
+
 }

@@ -322,6 +322,7 @@ public class EditActivity extends AppCompatActivity
       popup.getMenu().add(0, 10, 0, "Reverse");
       popup.getMenu().add(0, 11, 0, "Invert");
       popup.getMenu().add(0, 12, 0, "To Mono");
+      popup.getMenu().add(0, 13, 0, "High-Pass");
 
       popup.setOnMenuItemClickListener(item -> {
         String actionName = item.getTitle().toString();
@@ -433,6 +434,9 @@ public class EditActivity extends AppCompatActivity
             else
               clip.mixToMonoRange(0, clip.frameCount());
             refreshAfterChange();
+            return true;
+          case 13: // High-Pass
+            showHighPassDialog();
             return true;
         }
         return false;
@@ -776,6 +780,34 @@ public class EditActivity extends AppCompatActivity
       btnPlay.setEnabled(true);
       // btnPause.setEnabled(false);
     }
+  }
+
+  private void showHighPassDialog() {
+    EditText input = new EditText(this);
+    input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+    input.setText("80"); // по умолчанию 80 Гц
+    input.setHint("Частота среза (Гц)");
+
+    new AlertDialog.Builder(this).setTitle("High-Pass Filter (Гц)").setView(input)
+        .setPositiveButton("OK", (d, w) -> {
+          float cutoff;
+          try {
+            cutoff = Float.parseFloat(input.getText().toString().trim());
+          } catch (Exception e) {
+            return;
+          }
+          if (cutoff <= 0 || cutoff >= 20000) {
+            Toast.makeText(this, "Некорректная частота", Toast.LENGTH_SHORT).show();
+            return;
+          }
+          if (wave.hasSelection()) {
+            clip.highPass(wave.getSelStart(), wave.getSelEnd(), cutoff, applyL(), applyR());
+          } else {
+            clip.highPass(0, clip.frameCount(), cutoff, applyL(), applyR());
+          }
+          refreshAfterChange();
+          Toast.makeText(this, "High-Pass применён", Toast.LENGTH_SHORT).show();
+        }).setNegativeButton("Отмена", null).show();
   }
 
 }

@@ -438,4 +438,22 @@ public class AudioClip {
     Collections.sort(newMarkers);
     markers = newMarkers;
   }
+
+  public void highPass(int startFrame, int endFrame, float cutoffHz, boolean applyL,
+      boolean applyR) {
+    pushHistory();
+    int total = frameCount();
+    int s = Math.max(0, Math.min(startFrame, total));
+    int e = Math.max(s, Math.min(endFrame, total));
+    if (e <= s)
+      return;
+
+    // Вырезаем кусок
+    float[] range = AudioOps.trim(pcm, s, e);
+    // Применяем фильтр
+    range = AudioOps.highPass(range, sampleRate, cutoffHz, applyL, applyR);
+    // Вставляем обратно
+    System.arraycopy(range, 0, pcm, s * 2, range.length);
+  }
+
 }
