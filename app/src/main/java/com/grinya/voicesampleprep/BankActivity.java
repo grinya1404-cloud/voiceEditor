@@ -99,41 +99,9 @@ public class BankActivity extends AppCompatActivity {
   @Override
   protected void onActivityResult(int requestCode, int resultCode, Intent data) {
     super.onActivityResult(requestCode, resultCode, data);
+
     if (requestCode == REQ_IMPORT && resultCode == RESULT_OK && data != null) {
-      Uri uri = data.getData();
-      if (uri == null)
-        return;
-      new Thread(() -> {
-        try {
-          File tmp = new File(getCacheDir(), "import_tmp");
-          try (InputStream in = getContentResolver().openInputStream(uri);
-              FileOutputStream out = new FileOutputStream(tmp)) {
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) > 0)
-              out.write(buf, 0, n);
-          }
-          String displayName = "imported";
-          android.database.Cursor c = getContentResolver().query(uri, null, null, null, null);
-          if (c != null) {
-            int idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
-            if (c.moveToFirst() && idx >= 0)
-              displayName = c.getString(idx);
-            c.close();
-          }
-          File renamed = new File(getCacheDir(), displayName);
-          tmp.renameTo(renamed);
-          bankManager.importFile(currentBank, renamed);
-          renamed.delete();
-          runOnUiThread(() -> {
-            reload();
-            Toast.makeText(this, "Импортировано", Toast.LENGTH_SHORT).show();
-          });
-        } catch (Exception e) {
-          runOnUiThread(
-              () -> Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show());
-        }
-      }).start();
+      importFromUri(data.getData());
     }
   }
 
@@ -397,6 +365,60 @@ public class BankActivity extends AppCompatActivity {
 
   public interface BankPickerCallback {
     void onBankSelected(Bank bank);
+  }
+
+  private void importFromUri(Uri uri) {
+    if (uri == null)
+      return;
+    android.util.Log.d("IMPORT", "Start import: " + uri);
+
+    android.app.ProgressDialog progress = new android.app.ProgressDialog(this);
+    progress.setMessage("Импорт...");
+    progress.setCancelable(false);
+    progress.show();
+
+    new Thread(() -> {
+      try {
+        android.util.Log.d("IMPORT", "Copying file...");
+        File tmp = new File(getCacheDir(), "import_tmp");
+        try (InputStream in = getContentResolver().openInputStream(uri);
+            FileOutputStream out = new FileOutputStream(tmp)) {
+          byte[] buf = new byte[8192];
+          int n;
+          while ((n = in.read(buf)) > 0)
+            out.write(buf, 0, n);
+        }
+        android.util.Log.d("IMPORT", "File copied, size=" + tmp.length());
+
+        String displayName = "imported";
+        android.database.Cursor c = getContentResolver().query(uri, null, null, null, null);
+        if (c != null) {
+          int idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+          if (c.moveToFirst() && idx >= 0)
+            displayName = c.getString(idx);
+          c.close();
+        }
+        File renamed = new File(getCacheDir(), displayName);
+        tmp.renameTo(renamed);
+        android.util.Log.d("IMPORT", "Decoding: " + renamed.getName());
+
+        bankManager.importFile(currentBank, renamed);
+        android.util.Log.d("IMPORT", "Import success");
+        renamed.delete();
+
+        runOnUiThread(() -> {
+          progress.dismiss();
+          reload();
+          Toast.makeText(this, "Импортировано", Toast.LENGTH_SHORT).show();
+        });
+      } catch (Throwable e) {
+        android.util.Log.e("IMPORT", "Error", e);
+        runOnUiThread(() -> {
+          progress.dismiss();
+          Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        });
+      }
+    }).start();
   }
 
 }

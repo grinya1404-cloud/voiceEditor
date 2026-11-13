@@ -1,10 +1,17 @@
-<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <path android:strokeColor="#FFFFFF" android:strokeWidth="2" android:strokeLineCap="round" android:pathData="M45,45L40,37"/>
-    <path android:strokeColor="#FFFFFF" android:strokeWidth="2" android:strokeLineCap="round" android:pathData="M63,45L68,37"/>
-    <path android:fillColor="#FFFFFF" android:pathData="M38,72L38,58A16,16 0 0 1 70,58L70,72Z"/>
-    <path android:fillColor="@color/ic_launcher_background" android:pathData="M45,54a2,2 0 1 0 4,0a2,2 0 1 0 -4,0"/>
-    <path android:fillColor="@color/ic_launcher_background" android:pathData="M59,54a2,2 0 1 0 4,0a2,2 0 1 0 -4,0"/>
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.063"
+        android:scaleY="0.063"
+        android:translateX="23.62"
+        android:translateY="23.62">
+        <group android:translateY="960">
+            <path
+                android:pathData="M400-120q-66 0-113-47t-47-113q0-66 47-113t113-47q23 0 42.5 5.5T480-418v-422h240v160H560v400q0 66-47 113t-113 47Z"
+                android:fillColor="#2196F3"/>
+        </group>
+    </group>
 </vector>
