@@ -22,6 +22,7 @@ import com.grinya.voicesampleprep.util.AudioInfoDialog;
 import java.util.Locale;
 import android.view.View;
 import android.widget.Button;
+import com.grinya.voicesampleprep.ExportToBankActivity;
 
 public class EditActivity extends AppCompatActivity
     implements AudioPlayer.Listener, WaveformView.Listener {
@@ -133,10 +134,11 @@ public class EditActivity extends AppCompatActivity
       popup.getMenu().add(0, 1, 0, "Сохранить");
       popup.getMenu().add(0, 2, 0, "Инфо");
       popup.getMenu().add(0, 3, 0, "Экспорт");
+      popup.getMenu().add(0, 4, 0, "Экспорт в банк"); // <-- НОВЫЙ ПУНКТ
 
       popup.setOnMenuItemClickListener(item -> {
         switch (item.getItemId()) {
-          case 1:
+          case 1: // Сохранить
             try {
               clip.save();
               Toast.makeText(this, "Сохранено", Toast.LENGTH_SHORT).show();
@@ -144,16 +146,20 @@ public class EditActivity extends AppCompatActivity
               Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show();
             }
             return true;
-          case 2:
+          case 2: // Инфо
             int start = wave.hasSelection() ? wave.getSelStart() : -1;
             int end = wave.hasSelection() ? wave.getSelEnd() : -1;
             AudioInfoDialog.show(this, clip, start, end);
             return true;
-          case 3:
+          case 3: // Экспорт
             int selStart = wave.hasSelection() ? wave.getSelStart() : -1;
             int selEnd = wave.hasSelection() ? wave.getSelEnd() : -1;
             ExportActivity.setSource(clip, selStart, selEnd);
             startActivity(new Intent(this, ExportActivity.class));
+            return true;
+          case 4: // Экспорт в банк
+            EditActivityHolder.current = clip;
+            startActivity(new Intent(this, ExportToBankActivity.class));
             return true;
         }
         return false;
@@ -356,13 +362,7 @@ public class EditActivity extends AppCompatActivity
             }).start();
             return true;
           case 2: // Auto-Trim
-            if (wave.hasSelection())
-              clip.autoTrim(wave.getSelStart(), wave.getSelEnd(), 0.001f, applyL(), applyR());
-            else
-              clip.autoTrim(0, clip.frameCount(), 0.001f, applyL(), applyR());
-            wave.clearSelection();
-            refreshAfterChange();
-            Toast.makeText(this, "Тишина обрезана", Toast.LENGTH_SHORT).show();
+            showAutoTrimDialog();
             return true;
           case 3: // Channels
             boolean l = applyL();
@@ -799,6 +799,37 @@ public class EditActivity extends AppCompatActivity
       btnPlay.setEnabled(true);
       // btnPause.setEnabled(false);
     }
+  }
+
+  private void showAutoTrimDialog() {
+    EditText input = new EditText(this);
+    input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+    input.setText("0.001"); // Порог по умолчанию
+    input.setHint("Порог амплитуды (0..1)");
+
+    new AlertDialog.Builder(this).setTitle("Auto-Trim (порог тишины)")
+        .setMessage("Например: 0.001 (тихо) ... 0.01 (громче)").setView(input)
+        .setPositiveButton("OK", (d, w) -> {
+          float threshold;
+          try {
+            threshold = Float.parseFloat(input.getText().toString().trim());
+          } catch (Exception e) {
+            return;
+          }
+          if (threshold <= 0 || threshold >= 1) {
+            Toast.makeText(this, "Порог должен быть от 0 до 1", Toast.LENGTH_SHORT).show();
+            return;
+          }
+
+          if (wave.hasSelection()) {
+            clip.autoTrim(wave.getSelStart(), wave.getSelEnd(), threshold, applyL(), applyR());
+          } else {
+            clip.autoTrim(0, clip.frameCount(), threshold, applyL(), applyR());
+          }
+          wave.clearSelection();
+          refreshAfterChange();
+          Toast.makeText(this, "Тишина обрезана", Toast.LENGTH_SHORT).show();
+        }).setNegativeButton("Отмена", null).show();
   }
 
   private void showHighPassDialog() {
