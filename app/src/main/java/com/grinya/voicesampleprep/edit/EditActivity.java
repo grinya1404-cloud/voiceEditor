@@ -443,6 +443,25 @@ public class EditActivity extends AppCompatActivity
       });
       popup.show();
     });
+    findViewById(R.id.btnMarker).setOnClickListener(v -> {
+      if (wave.hasSelection()) {
+        clip.addMarker(wave.getSelStart());
+        clip.addMarker(wave.getSelEnd());
+      } else {
+        int f = player.getCurrentFrame();
+        if (wave.isZeroCrossingSnap() && clip.pcm != null) {
+          f = com.grinya.voicesampleprep.util.AudioOps.nearestZeroCrossing(clip.pcm, f);
+        }
+        clip.addMarker(f);
+      }
+      wave.updateMarkers(clip.markers);
+      isChanged = true;
+    });
+
+    findViewById(R.id.btnMarker).setOnLongClickListener(v -> {
+      showMarkerList();
+      return true;
+    });
   }
   // ---------- диалоги ----------
 

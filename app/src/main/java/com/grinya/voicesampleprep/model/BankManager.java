@@ -110,21 +110,12 @@ public class BankManager {
     WavWriter.write(out, r.pcm, r.sampleRate, r.sampleRate, 16, false, false, false, false, false);
 
     // Сохраняем .meta с параметрами исходника
+    // Сохраняем .meta с ПАРАМЕТРАМИ ИСХОДНИКА (до конвертации)
     AudioMeta meta = new AudioMeta();
-    // Параметры исходного файла (до конвертации в 48к стерео)
-    // AudioDecoder.Result не возвращает channels/bits, поэтому попробуем вытащить из имени
-    String ext = "";
-    int dot2 = src.getName().lastIndexOf('.');
-    if (dot2 > 0)
-      ext = src.getName().substring(dot2 + 1).toLowerCase();
-
-    meta.format = ext.isEmpty() ? "wav" : ext;
-    // Для WAV — можем попытаться прочитать параметры через WavReader (если хочется точности)
-    // Для простоты ставим дефолты (не знаем оригинальные параметры)
-    meta.sampleRate = 48000; // мы не сохраняем оригинальный sr
-    meta.channels = 2;
-    meta.bits = ext.equals("mp3") || ext.equals("m4a") || ext.equals("flac") ? 0 : 16;
-
+    meta.sampleRate = r.originalSampleRate;
+    meta.channels = r.originalChannels;
+    meta.bits = r.originalBits;
+    meta.format = r.originalFormat;
     AudioMeta.save(out, meta);
 
     AudioClip c = new AudioClip(out.getName(), r.pcm, r.sampleRate);

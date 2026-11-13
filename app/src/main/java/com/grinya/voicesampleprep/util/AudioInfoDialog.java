@@ -114,7 +114,26 @@ public class AudioInfoDialog {
     if (clip.markers.size() > 10) {
       sb.append("  ... и ещё ").append(clip.markers.size() - 10).append("\n");
     }
+    // Исходный файл (из .meta)
+    if (clip.dir != null) {
+      com.grinya.voicesampleprep.model.AudioMeta meta = com.grinya.voicesampleprep.model.AudioMeta
+          .load(clip.dir);
 
+      sb.append("=== ИСХОДНЫЙ ФАЙЛ ===\n");
+      if (meta.sampleRate > 0 || meta.channels > 0) {
+        if (meta.sampleRate > 0)
+          sb.append("Sample Rate: ").append(meta.sampleRate).append(" Гц\n");
+        if (meta.channels > 0)
+          sb.append("Каналы: ").append(meta.channels == 1 ? "Mono" : "Stereo").append("\n");
+        if (meta.bits > 0)
+          sb.append("Битность: ").append(meta.bits).append("-bit\n");
+        if (meta.format != null && !meta.format.isEmpty())
+          sb.append("Формат: ").append(meta.format).append("\n");
+      } else {
+        sb.append("Нет данных об исходнике\n");
+      }
+      sb.append("\n");
+    }
     return sb.toString();
   }
 }

@@ -18,6 +18,7 @@ import com.grinya.voicesampleprep.util.AudioOps;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import android.widget.Button;
 
 public class ExportActivity extends AppCompatActivity {
 
@@ -30,6 +31,8 @@ public class ExportActivity extends AppCompatActivity {
   private static int selStart = -1;
   private static int selEnd = -1;
   private AudioMeta originalMeta;
+  private boolean isDefaultMode = false;
+  private boolean isOriginalMode = false;
   private final java.util.ArrayList<String> recentActions = new java.util.ArrayList<>();
 
   public static void setSource(AudioClip clip, int s, int e) {
@@ -111,6 +114,9 @@ public class ExportActivity extends AppCompatActivity {
       ((RadioButton) findViewById(R.id.rb48)).setChecked(true);
       ((RadioButton) findViewById(R.id.rbStereo)).setChecked(true);
       ((RadioButton) findViewById(R.id.rb16)).setChecked(true);
+      isDefaultMode = true;
+      isOriginalMode = false;
+      updateButtonHighlights();
     });
 
     findViewById(R.id.btnOriginal).setOnClickListener(v -> {
@@ -132,7 +138,24 @@ public class ExportActivity extends AppCompatActivity {
         ((RadioButton) findViewById(R.id.rb24)).setChecked(true);
       else if (originalMeta.bits == 16)
         ((RadioButton) findViewById(R.id.rb16)).setChecked(true);
+
+      isOriginalMode = true;
+      isDefaultMode = false;
+      updateButtonHighlights();
     });
+    // Слушатели для сброса подсветки при ручном изменении
+    android.widget.RadioGroup.OnCheckedChangeListener resetListener = (group, checkedId) -> {
+      isDefaultMode = false;
+      isOriginalMode = false;
+      updateButtonHighlights();
+    };
+
+    ((android.widget.RadioGroup) findViewById(R.id.rgBits))
+        .setOnCheckedChangeListener(resetListener);
+    ((android.widget.RadioGroup) findViewById(R.id.rgRate))
+        .setOnCheckedChangeListener(resetListener);
+    ((android.widget.RadioGroup) findViewById(R.id.rgChannels))
+        .setOnCheckedChangeListener(resetListener);
   }
 
   private void startExport() {
@@ -325,7 +348,6 @@ public class ExportActivity extends AppCompatActivity {
     return fileName;
   }
 
-
   private void showExportResult(int written, int failed) {
     String msg = "Экспортировано: " + written;
     if (failed > 0)
@@ -388,4 +410,28 @@ public class ExportActivity extends AppCompatActivity {
     bankName = name;
     source = null; // сбрасываем одиночный источник
   }
+
+  private void updateButtonHighlights() {
+    Button btnDef = findViewById(R.id.btnDefaults);
+    Button btnMeta = findViewById(R.id.btnOriginal);
+
+    // Def
+    if (isDefaultMode) {
+      btnDef.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFFFFB300));
+      btnDef.setTextColor(0xFF0E0E10);
+    } else {
+      btnDef.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF2A2A2E));
+      btnDef.setTextColor(0xFFE8E8EA);
+    }
+
+    // Meta
+    if (isOriginalMode) {
+      btnMeta.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFFFFB300));
+      btnMeta.setTextColor(0xFF0E0E10);
+    } else {
+      btnMeta.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF2A2A2E));
+      btnMeta.setTextColor(0xFFB0B0B0);
+    }
+  }
+
 }

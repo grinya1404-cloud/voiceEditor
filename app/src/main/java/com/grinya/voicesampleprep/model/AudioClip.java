@@ -6,6 +6,7 @@ import com.grinya.voicesampleprep.util.AudioOps;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.io.IOException;
 
 public class AudioClip {
 
@@ -373,19 +374,15 @@ public class AudioClip {
   }
 
   /** Сохранить текущий PCM в исходный файл (dir), как WAV 16-bit stereo @ sampleRate. */
-  public void save() throws java.io.IOException {
+  public void save() throws IOException {
     if (dir == null)
-      throw new java.io.IOException("No file");
+      throw new IOException("No file");
     com.grinya.voicesampleprep.audio.WavWriter.write(dir, pcm, sampleRate, sampleRate, 16, false,
         false, false, false, false);
 
-    // Сохраняем .meta (маркеры + текущие параметры)
-    AudioMeta meta = new AudioMeta();
-    meta.sampleRate = sampleRate;
-    meta.channels = CHANNELS;
-    meta.bits = 16;
-    meta.format = "wav";
+    AudioMeta meta = AudioMeta.load(dir);
     meta.markers = new ArrayList<>(markers);
+    // Не заполняем sampleRate/channels/bits/format, если их не было
     AudioMeta.save(dir, meta);
   }
 
