@@ -19,6 +19,7 @@ import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import android.widget.Button;
+import com.grinya.voicesampleprep.util.ExportUtils;
 
 public class ExportActivity extends AppCompatActivity {
 
@@ -294,27 +295,7 @@ public class ExportActivity extends AppCompatActivity {
   }
 
   private List<int[]> buildRanges(boolean byMarkers) {
-    List<int[]> ranges = new ArrayList<>();
-    if (byMarkers) {
-      List<Integer> all = new ArrayList<>(source.markers);
-      if (all.size() < 2) {
-        Toast.makeText(this, "Нужно минимум 2 маркера", Toast.LENGTH_SHORT).show();
-        return ranges;
-      }
-      java.util.TreeSet<Integer> ts = new java.util.TreeSet<>(all);
-      Integer[] arr = ts.toArray(new Integer[0]);
-      for (int i = 0; i < arr.length - 1; i++) {
-        if (arr[i + 1] > arr[i])
-          ranges.add(new int[] { arr[i], arr[i + 1] });
-      }
-    } else {
-      if (selStart >= 0 && selEnd > selStart) {
-        ranges.add(new int[] { selStart, selEnd });
-      } else {
-        ranges.add(new int[] { 0, source.frameCount() });
-      }
-    }
-    return ranges;
+    return ExportUtils.buildRanges(source, byMarkers, selStart, selEnd);
   }
 
   private String exportSingleRangeFromClip(Uri treeUri,

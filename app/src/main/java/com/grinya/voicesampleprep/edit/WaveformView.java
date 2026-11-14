@@ -53,6 +53,7 @@ public class WaveformView extends View {
   private int totalFrames = 0;
   private int sampleRate = 48000;
   private List<Integer> markers;
+  private List<int[]> exportIntervals;
   private static final int DRAG_PLAYHEAD = 6;
 
   private double viewStartFrame = 0;
@@ -886,6 +887,7 @@ public class WaveformView extends View {
 
     // 8. Маркеры
     drawMarkers(canvas, waveWidth, waveTop, waveBottom);
+    drawExportIntervals(canvas, waveWidth, waveTop);
 
     // 9. Playhead (красная и зелёная линии)
     drawPlayheads(canvas, waveWidth, waveTop, waveBottom);
@@ -1039,14 +1041,49 @@ public class WaveformView extends View {
     drawCheckbox(canvas, checkLx, checkLy, channelL);
     pChannelText.setColor(channelL ? 0xFF0E0E10 : 0xFFE8E8EA);
     // Центрируем крупную букву
-    canvas.drawText("L", checkLx + checkSize / 2f - 10, checkLy + checkSize / 2f + 10, pChannelText);
+    canvas.drawText("L", checkLx + checkSize / 2f - 10, checkLy + checkSize / 2f + 10,
+        pChannelText);
 
     // R (нижняя волна)
     checkRx = w - checkSize - 25;
     checkRy = waveTop + waveH / 2 + 25;
     drawCheckbox(canvas, checkRx, checkRy, channelR);
     pChannelText.setColor(channelR ? 0xFF0E0E10 : 0xFFE8E8EA);
-    canvas.drawText("R", checkRx + checkSize / 2f - 10, checkRy + checkSize / 2f + 10, pChannelText);
+    canvas.drawText("R", checkRx + checkSize / 2f - 10, checkRy + checkSize / 2f + 10,
+        pChannelText);
+  }
+
+  private void drawExportIntervals(Canvas canvas, int waveWidth, int waveTop) {
+    if (exportIntervals == null || exportIntervals.isEmpty())
+      return;
+
+    Paint pInterval = new Paint(Paint.ANTI_ALIAS_FLAG);
+    pInterval.setColor(colorMarker);
+    pInterval.setStrokeWidth(2f);
+    pInterval.setStyle(Paint.Style.STROKE);
+
+    float lineWidth = 2f;
+    float offset = 1f;
+
+    for (int[] interval : exportIntervals) {
+      float x1 = frameToX(interval[0]);
+      float x2 = frameToX(interval[1]);
+
+      if (x2 < 0 || x1 > waveWidth) {
+        offset += lineWidth + 1f;
+        continue;
+      }
+
+      float y = waveTop + offset;
+      float drawX1 = Math.max(0, x1);
+      float drawX2 = Math.min(waveWidth, x2);
+
+      canvas.drawLine(drawX1, y, drawX2, y, pInterval);
+      canvas.drawLine(drawX1, y - 3, drawX1, y + 3, pInterval);
+      canvas.drawLine(drawX2, y - 3, drawX2, y + 3, pInterval);
+
+      offset += lineWidth + 1f;
+    }
   }
 
   private void drawCheckbox(Canvas c, float x, float y, boolean checked) {
@@ -1229,6 +1266,11 @@ public class WaveformView extends View {
         canvas.drawLine(scaleX, yBot, scaleX + 6, yBot, pAmpScale);
       }
     }
+  }
+
+  public void updateExportIntervals(List<int[]> intervals) {
+    this.exportIntervals = intervals;
+    invalidate();
   }
 
 }

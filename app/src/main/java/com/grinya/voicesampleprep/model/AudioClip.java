@@ -19,6 +19,7 @@ public class AudioClip {
   public int sampleRate;
   public int channels;
   public List<Integer> markers = new ArrayList<>(); // индексы фреймов
+  public List<int[]> exportIntervals = new ArrayList<>();
 
   private final UndoStack history = new UndoStack();
 
@@ -451,6 +452,41 @@ public class AudioClip {
     range = AudioOps.highPass(range, sampleRate, cutoffHz, applyL, applyR);
     // Вставляем обратно
     System.arraycopy(range, 0, pcm, s * 2, range.length);
+  }
+
+  /** Добавить интервал для экспорта. Возвращает true, если добавлен. */
+  public boolean addExportInterval(int startMarker, int endMarker) {
+    if (startMarker >= endMarker)
+      return false;
+
+    // Проверка: нельзя, чтобы маркер был началом двух интервалов
+    for (int[] i : exportIntervals) {
+      if (i[0] == startMarker)
+        return false;
+    }
+    // Проверка: нельзя, чтобы маркер был концом двух интервалов
+    for (int[] i : exportIntervals) {
+      if (i[1] == endMarker)
+        return false;
+    }
+
+    exportIntervals.add(new int[] { startMarker, endMarker });
+    return true;
+  }
+
+  /** Удалить интервал по началу и концу. */
+  public void removeExportInterval(int startMarker, int endMarker) {
+    exportIntervals.removeIf(i -> i[0] == startMarker && i[1] == endMarker);
+  }
+
+  /** Удалить все интервалы, где участвует маркер. */
+  public void removeExportIntervalsWithMarker(int marker) {
+    exportIntervals.removeIf(i -> i[0] == marker || i[1] == marker);
+  }
+
+  /** Очистить все интервалы. */
+  public void clearExportIntervals() {
+    exportIntervals.clear();
   }
 
 }

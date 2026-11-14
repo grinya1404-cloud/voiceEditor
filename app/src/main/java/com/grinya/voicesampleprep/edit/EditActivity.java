@@ -45,6 +45,7 @@ public class EditActivity extends AppCompatActivity
   private boolean isRightEnabled = true;
   private final java.util.ArrayList<String> recentActions = new java.util.ArrayList<>();
   private float[] clipboard = null; // Внутренний буфер обмена
+  private int pendingStartMarker = -1; // Маркер, ожидающий соединения
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -722,12 +723,75 @@ public class EditActivity extends AppCompatActivity
 
   @Override
   public void onMarkerLongPressed(int frame) {
+    // Если это тот же маркер, который ждёт соединения — сбрасываем
+    if (pendingStartMarker == frame) {
+      pendingStartMarker = -1;
+      Toast.makeText(this, "Соединение отменено", Toast.LENGTH_SHORT).show();
+      return;
+    }
+
+    // Если уже есть pendingStartMarker и это другой маркер — создаём интервал
+    if (pendingStartMarker != -1) {
+      int start = Math.min(pendingStartMarker, frame);
+      int end = Math.max(pendingStartMarker, frame);
+
+      if (clip.addExportInterval(start, end)) {
+        Toast.makeText(this, "Интервал создан", Toast.LENGTH_SHORT).show();
+        wave.updateExportIntervals(clip.exportIntervals);
+        try {
+          clip.save();
+        } catch (Exception ignored) {
+        }
+      } else {
+        Toast.makeText(this, "Нельзя: маркер уже используется как начало/конец", Toast.LENGTH_LONG)
+            .show();
+      }
+      pendingStartMarker = -1;
+      return;
+    }
+
+    // Иначе — показываем меню
     String time = formatMs(frame * 1000 / clip.sampleRate);
+
+    boolean hasInterval = false;
+    for (int[] i : clip.exportIntervals) {
+      if (i[0] == frame || i[1] == frame) {
+        hasInterval = true;
+        break;
+      }
+    }
+
+    java.util.ArrayList<String> options = new java.util.ArrayList<>();
+    options.add("Соединить");
+    if (hasInterval)
+      options.add("Отменить соединение");
+    options.add("Удалить маркер");
+
     new AlertDialog.Builder(this).setTitle("Маркер @" + time)
-        .setPositiveButton("Удалить", (d, which) -> {
-          clip.removeMarker(frame);
-          wave.updateMarkers(clip.markers);
-          isChanged = true; // Маркеры изменились
+        .setItems(options.toArray(new String[0]), (d, which) -> {
+          String choice = options.get(which);
+          if (choice.equals("Соединить")) {
+            pendingStartMarker = frame;
+            Toast.makeText(this, "Выберите второй маркер (долгий тап)", Toast.LENGTH_SHORT).show();
+          } else if (choice.equals("Отменить соединение")) {
+            clip.removeExportIntervalsWithMarker(frame);
+            wave.updateExportIntervals(clip.exportIntervals);
+            try {
+              clip.save();
+            } catch (Exception ignored) {
+            }
+            Toast.makeText(this, "Соединение отменено", Toast.LENGTH_SHORT).show();
+          } else if (choice.equals("Удалить маркер")) {
+            clip.removeExportIntervalsWithMarker(frame);
+            clip.removeMarker(frame);
+            wave.updateMarkers(clip.markers);
+            wave.updateExportIntervals(clip.exportIntervals);
+            isChanged = true;
+            try {
+              clip.save();
+            } catch (Exception ignored) {
+            }
+          }
         }).setNegativeButton("Отмена", null).show();
   }
 
