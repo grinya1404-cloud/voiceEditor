@@ -28,6 +28,12 @@ public class WaveformView extends View {
     void onMarkerLongPressed(int frame);
 
     void onChannelToggled(boolean left, boolean right);
+
+    void onIntervalLongPressed(int startFrame, int endFrame);
+
+    void onIntervalsModeChanged(boolean enabled);
+
+    void onIntervalTapped(int startFrame, int endFrame);
   }
 
   // ---------- цвета ----------
@@ -112,9 +118,31 @@ public class WaveformView extends View {
   private final Paint pHGrid = new Paint();
   private int ampScaleWidthPx;
 
+  private boolean intervalsEditMode = false;
+  private int intervalPage = 0;
+  private int intervalPageSize = 6;
+  private int selectedIntervalIndex = -1; // индекс выбранного интервала (для обводки)
+  private final Paint pIntervalFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Paint pIntervalStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Paint pIntervalText = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private int lastWaveTop = 0;
+  private int lastWaveBottom = 0;
+  private int lastWaveWidth = 0;
+  private int downIntervalStart = -1;
+  private int downIntervalEnd = -1;
+
   private final Runnable longPressRunnable = new Runnable() {
     @Override
     public void run() {
+      if (downIntervalStart != -1) {
+        if (listener != null)
+          listener.onIntervalLongPressed(downIntervalStart, downIntervalEnd);
+        longPressActivated = true;
+        downIntervalStart = -1;
+        downIntervalEnd = -1;
+        performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+        return;
+      }
       if (downMarkerFrame != -1) {
         if (listener != null)
           listener.onMarkerLongPressed(downMarkerFrame);
@@ -207,6 +235,16 @@ public class WaveformView extends View {
 
     pEmpty.setColor(0xAA000000); // Полупрозрачный черный
     pEmpty.setStyle(Paint.Style.FILL);
+
+    pIntervalFill.setColor(0x884FC3F7); // Полупрозрачный голубой
+    pIntervalFill.setStyle(Paint.Style.FILL);
+
+    pIntervalStroke.setColor(0xFFFFB300); // Янтарная обводка (для выбранного)
+    pIntervalStroke.setStrokeWidth(2f * density);
+    pIntervalStroke.setStyle(Paint.Style.STROKE);
+
+    pIntervalText.setColor(0xFF0E0E10); // Тёмный текст
+    pIntervalText.setTextSize(11f * density);
 
     // Шкала амплитуды
     float density2 = c.getResources().getDisplayMetrics().density;
@@ -469,6 +507,60 @@ public class WaveformView extends View {
     downSelStart = selStart;
     downSelEnd = selEnd;
 
+    // 0. Проверка тапа по интервалам (всегда, независимо от режима)
+    // 0. Проверка тапа по интервалам (всегда, независимо от режима)
+    if (exportIntervals != null && !exportIntervals.isEmpty()) {
+      float[] layout = calcStripLayout();
+      float startY = layout[0];
+      float stripH = layout[1];
+      int count = (int) layout[2];
+      int startIdx = (int) layout[3];
+      int endIdx = (int) layout[4];
+
+      if (count > 0) {
+        float stepY = stripH + 8f; // Шаг между полосками
+        // Зона тапа: половина шага вверх и вниз от полоски
+        // (в тонком режиме stepY = 16f, зона = 16f — касается соседних)
+        float tapAbove = stepY / 2f;
+        float tapBelow = stepY / 2f;
+
+        float offsetY = startY;
+        for (int i = startIdx; i < endIdx; i++) {
+          int[] interval = exportIntervals.get(i);
+          float x1 = frameToX(interval[0]);
+          float x2 = frameToX(interval[1]);
+          float drawX1 = Math.max(0, x1) + paddingPx;
+          float drawX2 = Math.min(lastWaveWidth, x2) + paddingPx;
+
+          // Зона тапа: от offsetY - tapAbove до offsetY + stripH + tapBelow
+          float tapTop = offsetY - tapAbove;
+          float tapBottom = offsetY + stripH + tapBelow;
+
+          if (e.getX() >= drawX1 && e.getX() <= drawX2 && e.getY() >= tapTop
+              && e.getY() <= tapBottom) {
+            // Попали в полосу
+            if (!intervalsEditMode) {
+              // Вход в режим
+              setIntervalsEditMode(true);
+              if (listener != null)
+                listener.onIntervalsModeChanged(true);
+            } else {
+              // Уже в режиме — просто выделяем (не выходим)
+              selectedIntervalIndex = i;
+              invalidate();
+            }
+
+            downIntervalStart = interval[0];
+            downIntervalEnd = interval[1];
+            longPressActivated = false;
+            postDelayed(longPressRunnable, 350);
+            return true;
+          }
+          offsetY += stepY;
+        }
+      }
+    }
+
     // 1. Проверка чекбоксов L/R
     if (stereoView) {
       if (e.getX() >= checkLx && e.getX() <= checkLx + checkSize && e.getY() >= checkLy
@@ -550,7 +642,8 @@ public class WaveformView extends View {
     // Отмена long-press при движении
     if (!longPressActivated && Math.abs(e.getX() - downX) + Math.abs(e.getY() - downY) > 12) {
       removeCallbacks(longPressRunnable);
-      downMarkerFrame = -1;
+      downIntervalStart = -1;
+      downIntervalEnd = -1;
     }
 
     if (dragMode == DRAG_PLAYHEAD) {
@@ -638,7 +731,43 @@ public class WaveformView extends View {
       if (listener != null)
         listener.onSelectionChanged(selStart, selEnd);
     }
+    // Выход из режима интервалов при повторном тапе по той же полосе
+    if (intervalsEditMode && selectedIntervalIndex != -1 && !longPressActivated) {
+      // Проверяем, что тап был коротким (не движение)
+      if (Math.abs(e.getX() - downX) < 8 && Math.abs(e.getY() - downY) < 8) {
+        // Проверяем, что тап был по той же полосе
+        float[] layout = calcStripLayout();
+        float startY = layout[0];
+        float stripH = layout[1];
+        int startIdx = (int) layout[3];
+        int endIdx = (int) layout[4];
+        float stepY = stripH + 8f;
 
+        int startIdxLocal = intervalPage * intervalPageSize;
+        int endIdxLocal = Math.min(startIdxLocal + intervalPageSize, exportIntervals.size());
+        float offsetY = startY;
+
+        for (int i = startIdxLocal; i < endIdxLocal; i++) {
+          if (i == selectedIntervalIndex) {
+            int[] interval = exportIntervals.get(i);
+            float x1 = frameToX(interval[0]) + paddingPx;
+            float x2 = frameToX(interval[1]) + paddingPx;
+            float drawX1 = Math.max(0, x1);
+            float drawX2 = Math.min(lastWaveWidth, x2) + paddingPx;
+
+            if (e.getX() >= drawX1 && e.getX() <= drawX2 && e.getY() >= offsetY - stepY / 2f
+                && e.getY() <= offsetY + stepY / 2f) {
+              // Повторный тап по выбранной полосе — выход
+              setIntervalsEditMode(false);
+              if (listener != null)
+                listener.onIntervalsModeChanged(false);
+              return true;
+            }
+          }
+          offsetY += stepY;
+        }
+      }
+    }
     // Короткий тап (не долгий)
     if (e.getActionMasked() == MotionEvent.ACTION_UP && Math.abs(e.getX() - downX) < 8
         && Math.abs(e.getY() - downY) < 8 && e.getY() >= rulerHeightPx && !longPressActivated) {
@@ -659,6 +788,8 @@ public class WaveformView extends View {
     dragMode = DRAG_NONE;
     downMarkerFrame = -1;
     longPressActivated = false;
+    downIntervalStart = -1;
+    downIntervalEnd = -1;
     return true;
   }
 
@@ -859,6 +990,9 @@ public class WaveformView extends View {
     canvas.save();
     canvas.translate(paddingPx, 0);
     int waveWidth = w - 2 * paddingPx;
+    lastWaveTop = waveTop;
+    lastWaveBottom = waveBottom;
+    lastWaveWidth = waveWidth;
 
     drawRuler(canvas, waveWidth, rulerH);
 
@@ -898,6 +1032,10 @@ public class WaveformView extends View {
     // 8. Маркеры
     drawMarkers(canvas, waveWidth, waveTop, waveBottom);
     drawExportIntervals(canvas, waveWidth, waveTop);
+
+    if (intervalsEditMode && exportIntervals != null) {
+      drawIntervalsEditMode(canvas, waveWidth, waveTop, waveBottom);
+    }
 
     // 9. Playhead (красная и зелёная линии)
     drawPlayheads(canvas, waveWidth, waveTop, waveBottom);
@@ -1066,33 +1204,42 @@ public class WaveformView extends View {
   private void drawExportIntervals(Canvas canvas, int waveWidth, int waveTop) {
     if (exportIntervals == null || exportIntervals.isEmpty())
       return;
+    if (intervalsEditMode)
+      return; // В режиме интервалов рисуем через drawIntervalsEditMode
 
-    Paint pInterval = new Paint(Paint.ANTI_ALIAS_FLAG);
-    pInterval.setColor(colorMarker);
-    pInterval.setStrokeWidth(2f);
-    pInterval.setStyle(Paint.Style.STROKE);
+    float[] layout = calcStripLayout();
+    float startY = layout[0];
+    float stripH = 8f; // Тонкая полоска в обычном режиме
+    int count = (int) layout[2];
+    int startIdx = (int) layout[3];
+    int endIdx = (int) layout[4];
 
-    float lineWidth = 2f;
-    float offset = 1f;
+    if (count <= 0)
+      return;
 
-    for (int[] interval : exportIntervals) {
+    Paint pFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+    pFill.setColor(0x884FC3F7);
+    pFill.setStyle(Paint.Style.FILL);
+
+    float offsetY = startY;
+    for (int i = startIdx; i < endIdx; i++) {
+      int[] interval = exportIntervals.get(i);
       float x1 = frameToX(interval[0]);
       float x2 = frameToX(interval[1]);
 
       if (x2 < 0 || x1 > waveWidth) {
-        offset += lineWidth + 1f;
+        offsetY += stripH + 8f;
         continue;
       }
 
-      float y = waveTop + offset;
       float drawX1 = Math.max(0, x1);
       float drawX2 = Math.min(waveWidth, x2);
 
-      canvas.drawLine(drawX1, y, drawX2, y, pInterval);
-      canvas.drawLine(drawX1, y - 3, drawX1, y + 3, pInterval);
-      canvas.drawLine(drawX2, y - 3, drawX2, y + 3, pInterval);
+      android.graphics.RectF rect = new android.graphics.RectF(drawX1, offsetY, drawX2,
+          offsetY + stripH);
+      canvas.drawRoundRect(rect, 4, 4, pFill);
 
-      offset += lineWidth + 1f;
+      offsetY += stripH + 8f;
     }
   }
 
@@ -1281,6 +1428,114 @@ public class WaveformView extends View {
   public void updateExportIntervals(List<int[]> intervals) {
     this.exportIntervals = intervals;
     invalidate();
+  }
+
+  public void setIntervalsEditMode(boolean enabled) {
+    this.intervalsEditMode = enabled;
+    this.intervalPage = 0;
+    this.selectedIntervalIndex = -1;
+    invalidate();
+  }
+
+  public boolean isIntervalsEditMode() {
+    return intervalsEditMode;
+  }
+
+  public void nextIntervalPage() {
+    if (exportIntervals == null)
+      return;
+    int maxPage = (exportIntervals.size() - 1) / intervalPageSize;
+    if (intervalPage < maxPage) {
+      intervalPage++;
+      selectedIntervalIndex = -1;
+      invalidate();
+    }
+  }
+
+  public void prevIntervalPage() {
+    if (intervalPage > 0) {
+      intervalPage--;
+      selectedIntervalIndex = -1;
+      invalidate();
+    }
+  }
+
+  private void drawIntervalsEditMode(Canvas canvas, int waveWidth, int waveTop, int waveBottom) {
+    if (exportIntervals == null || exportIntervals.isEmpty())
+      return;
+
+    float[] layout = calcStripLayout();
+    float startY = layout[0];
+    float stripH = layout[1];
+    int count = (int) layout[2];
+    int startIdx = (int) layout[3];
+    int endIdx = (int) layout[4];
+
+    if (count <= 0)
+      return;
+
+    float offsetY = startY;
+    for (int i = startIdx; i < endIdx; i++) {
+      int[] interval = exportIntervals.get(i);
+      float x1 = frameToX(interval[0]);
+      float x2 = frameToX(interval[1]);
+
+      if (x2 < 0 || x1 > waveWidth) {
+        offsetY += stripH + 8f;
+        continue;
+      }
+
+      float drawX1 = Math.max(0, x1);
+      float drawX2 = Math.min(waveWidth, x2);
+
+      android.graphics.RectF rect = new android.graphics.RectF(drawX1, offsetY, drawX2,
+          offsetY + stripH);
+
+      if (i == selectedIntervalIndex) {
+        canvas.drawRoundRect(rect, 6, 6, pIntervalFill);
+        canvas.drawRoundRect(rect, 6, 6, pIntervalStroke);
+      } else {
+        canvas.drawRoundRect(rect, 6, 6, pIntervalFill);
+      }
+
+      String label = (i + 1) + ": " + formatMsForStrip(interval[0]) + " – "
+          + formatMsForStrip(interval[1]);
+      canvas.drawText(label, drawX1 + 8, offsetY + stripH / 2 + 4, pIntervalText);
+
+      offsetY += stripH + 8f;
+    }
+  }
+
+  private String formatMsForStrip(int frame) {
+    int ms = frame * 1000 / sampleRate;
+    int m = ms / 60000;
+    int s = (ms % 60000) / 1000;
+    return String.format(java.util.Locale.US, "%02d:%02d", m, s);
+  }
+
+  /**
+   * Вычисляет раскладку полос интервалов. Возвращает массив: [startY, stripH, count, startIdx, endIdx].
+   */
+  private float[] calcStripLayout() {
+    int startIdx = intervalPage * intervalPageSize;
+    int endIdx = Math.min(startIdx + intervalPageSize, exportIntervals.size());
+    int count = endIdx - startIdx;
+
+    float waveH = lastWaveBottom - lastWaveTop;
+    float stripH;
+
+    if (intervalsEditMode) {
+      stripH = Math.min(40f, waveH / Math.max(1, count + 1));
+      if (stripH < 24f)
+        stripH = 24f;
+    } else {
+      stripH = 8f; // Тонкая в обычном режиме
+    }
+
+    float totalH = count * stripH + Math.max(0, count - 1) * 8f;
+    float startY = lastWaveTop + (waveH - totalH) / 2f;
+
+    return new float[] { startY, stripH, count, startIdx, endIdx };
   }
 
 }

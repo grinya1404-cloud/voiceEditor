@@ -927,4 +927,62 @@ public class EditActivity extends AppCompatActivity
         }).setNegativeButton("Отмена", null).show();
   }
 
+  @Override
+  public void onIntervalLongPressed(int startFrame, int endFrame) {
+    String timeStart = formatMs(startFrame * 1000 / clip.sampleRate);
+    String timeEnd = formatMs(endFrame * 1000 / clip.sampleRate);
+
+    new AlertDialog.Builder(this).setTitle("Интервал " + timeStart + " – " + timeEnd)
+        .setItems(new String[] { "Проиграть", "Удалить", "Экспортировать", "В банк", "Инфо" },
+            (d, which) -> {
+              switch (which) {
+                case 0: // Проиграть
+                  player.setPlayRange(startFrame, endFrame);
+                  player.seekToFrame(startFrame);
+                  player.play();
+                  break;
+                case 1: // Удалить
+                  clip.removeExportInterval(startFrame, endFrame);
+                  wave.updateExportIntervals(clip.exportIntervals);
+                  isChanged = true;
+                  // Если больше нет интервалов, выходим из режима
+                  if (clip.exportIntervals.isEmpty()) {
+                    wave.setIntervalsEditMode(false);
+                  }
+                  break;
+                case 2: // Экспортировать
+                  // ExportActivity.setForcedInterval(startFrame, endFrame);
+                  // TODO: реализовать принудительный интервал в ExportActivity
+                  ExportActivity.setSource(clip, -1, -1);
+                  startActivity(new Intent(this, ExportActivity.class));
+                  break;
+                case 3: // В банк
+                  ExportToBankActivity.setForcedInterval(startFrame, endFrame);
+                  EditActivityHolder.current = clip;
+                  startActivity(new Intent(this, ExportToBankActivity.class));
+                  break;
+                case 4: // Инфо
+                  AudioInfoDialog.show(this, clip, startFrame, endFrame);
+                  // AudioInfoDialog.showInterval(this, clip, startFrame, endFrame);
+                  break;
+              }
+            })
+        .setNegativeButton("Отмена", null).show();
+  }
+
+  @Override
+  public void onIntervalsModeChanged(boolean enabled) {
+    // Можно обновить UI (например, скрыть/показать кнопки), если нужно.
+    // Пока просто ничего не делаем.
+  }
+
+  @Override
+  public void onIntervalTapped(int startFrame, int endFrame) {
+    // Вход в режим интервалов
+    if (!wave.isIntervalsEditMode()) {
+      wave.setIntervalsEditMode(true);
+      // Опционально: можно показать тост "Режим интервалов"
+    }
+  }
+
 }
