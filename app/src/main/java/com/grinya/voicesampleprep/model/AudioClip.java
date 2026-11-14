@@ -383,6 +383,7 @@ public class AudioClip {
 
     AudioMeta meta = AudioMeta.load(dir);
     meta.markers = new ArrayList<>(markers);
+    meta.exportIntervals = new ArrayList<>(exportIntervals);
     // Не заполняем sampleRate/channels/bits/format, если их не было
     AudioMeta.save(dir, meta);
   }
@@ -459,14 +460,9 @@ public class AudioClip {
     if (startMarker >= endMarker)
       return false;
 
-    // Проверка: нельзя, чтобы маркер был началом двух интервалов
+    // Проверка на дубликат (тот же самый интервал)
     for (int[] i : exportIntervals) {
-      if (i[0] == startMarker)
-        return false;
-    }
-    // Проверка: нельзя, чтобы маркер был концом двух интервалов
-    for (int[] i : exportIntervals) {
-      if (i[1] == endMarker)
+      if (i[0] == startMarker && i[1] == endMarker)
         return false;
     }
 

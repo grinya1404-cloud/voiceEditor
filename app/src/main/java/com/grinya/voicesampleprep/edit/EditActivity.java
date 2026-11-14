@@ -70,13 +70,6 @@ public class EditActivity extends AppCompatActivity
       return;
     }
 
-    // Загружаем метки с диска (только если clip не null)
-    if (clip.dir != null) {
-      AudioMeta meta = AudioMeta.load(clip.dir);
-      clip.markers.clear();
-      clip.markers.addAll(meta.markers);
-    }
-
     wave = findViewById(R.id.wave);
     txtName = findViewById(R.id.txtName);
     txtTime = findViewById(R.id.txtTime);
@@ -92,6 +85,7 @@ public class EditActivity extends AppCompatActivity
 
     wave.setListener(this);
     wave.setData(clip.pcm, clip.sampleRate, clip.markers);
+    wave.updateExportIntervals(clip.exportIntervals);
 
     // android.content.SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS,MODE_PRIVATE);
     // boolean showStereo = prefs.getBoolean(SettingsActivity.KEY_STEREO_WAVES, false);
@@ -735,7 +729,18 @@ public class EditActivity extends AppCompatActivity
       int start = Math.min(pendingStartMarker, frame);
       int end = Math.max(pendingStartMarker, frame);
 
-      if (clip.addExportInterval(start, end)) {
+      // Проверяем, существует ли уже такой интервал
+      boolean exists = false;
+      for (int[] i : clip.exportIntervals) {
+        if (i[0] == start && i[1] == end) {
+          exists = true;
+          break;
+        }
+      }
+
+      if (exists) {
+        Toast.makeText(this, "Этот интервал уже существует", Toast.LENGTH_SHORT).show();
+      } else if (clip.addExportInterval(start, end)) {
         Toast.makeText(this, "Интервал создан", Toast.LENGTH_SHORT).show();
         wave.updateExportIntervals(clip.exportIntervals);
         try {
@@ -743,8 +748,7 @@ public class EditActivity extends AppCompatActivity
         } catch (Exception ignored) {
         }
       } else {
-        Toast.makeText(this, "Нельзя: маркер уже используется как начало/конец", Toast.LENGTH_LONG)
-            .show();
+        Toast.makeText(this, "Не удалось создать интервал", Toast.LENGTH_SHORT).show();
       }
       pendingStartMarker = -1;
       return;

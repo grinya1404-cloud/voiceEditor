@@ -440,14 +440,9 @@ public class WaveformView extends View {
     scaleDetector.onTouchEvent(e);
     gestureDetector.onTouchEvent(e);
 
+    // Тап по линейке
     if (e.getActionMasked() == MotionEvent.ACTION_DOWN && e.getY() < rulerHeightPx) {
-      int frame = xToFrame(e.getX());
-      // Прилипание к маркеру (в пределах 15px)
-      int marker = nearestMarker(frame, 15);
-      if (marker != -1) {
-        frame = marker;
-      }
-      playheadFrame = frame;
+      playheadFrame = xToFrame(e.getX());
       invalidate();
       if (listener != null)
         listener.onPlayheadDragged(playheadFrame);
@@ -457,199 +452,214 @@ public class WaveformView extends View {
 
     switch (e.getActionMasked()) {
       case MotionEvent.ACTION_DOWN:
-        lastTouchX = e.getX();
-        downX = e.getX();
-        downY = e.getY();
-        downSelStart = selStart;
-        downSelEnd = selEnd;
-
-        if (stereoView) {
-          if (e.getX() >= checkLx && e.getX() <= checkLx + checkSize && e.getY() >= checkLy
-              && e.getY() <= checkLy + checkSize) {
-            if (!channelR)
-              return true;
-            channelL = !channelL;
-            invalidate();
-            if (listener != null)
-              listener.onChannelToggled(channelL, channelR);
-            return true;
-          }
-          if (e.getX() >= checkRx && e.getX() <= checkRx + checkSize && e.getY() >= checkRy
-              && e.getY() <= checkRy + checkSize) {
-            if (!channelL)
-              return true;
-            channelR = !channelR;
-            invalidate();
-            if (listener != null)
-              listener.onChannelToggled(channelL, channelR);
-            return true;
-          }
-        }
-
-        // Проверка на попадание в красную линию (playhead)
-        float playX = frameToX(playheadFrame) + paddingPx;
-        if (Math.abs(e.getX() - playX) <= 20) { // зона 20px
-          dragMode = DRAG_PLAYHEAD;
-          return true;
-        }
-
-        if (hasSelection() && e.getY() >= rulerHeightPx) {
-          // Прибавляем paddingPx, так как e.getX() — это координата экрана, а frameToX — внутри сдвинутого canvas
-          float sxStart = frameToX(selStart) + paddingPx;
-          float sxEnd = frameToX(selEnd) + paddingPx;
-          if (Math.abs(e.getX() - sxStart) <= handleHalfPx * 2) {
-            dragMode = DRAG_SEL_START;
-            return true;
-          }
-          if (Math.abs(e.getX() - sxEnd) <= handleHalfPx * 2) {
-            dragMode = DRAG_SEL_END;
-            return true;
-          }
-        }
-
-        downMarkerFrame = -1;
-        if (markers != null) {
-          for (int m : markers) {
-            float mx = frameToX(m) + paddingPx; // + paddingPx
-            if (e.getX() >= mx - 20 && e.getX() <= mx + markerFlagW + 20) {
-              downMarkerFrame = m;
-              break;
-            }
-          }
-        }
-
-        dragMode = DRAG_SCROLL;
-        longPressActivated = false;
-        postDelayed(longPressRunnable, 350);
-        return true;
-
+        return handleActionDown(e);
       case MotionEvent.ACTION_MOVE:
-        if (scaleDetector.isInProgress())
-          return true;
-        if (!longPressActivated && Math.abs(e.getX() - downX) + Math.abs(e.getY() - downY) > 12) {
-          removeCallbacks(longPressRunnable);
-          downMarkerFrame = -1;
-        }
-
-        if (dragMode == DRAG_PLAYHEAD) {
-          int f = xToFrame(e.getX());
-          // Прилипание к маркеру
-          int marker = nearestMarker(f, 15);
-          if (marker != -1)
-            f = marker;
-
-          playheadFrame = f;
-          invalidate();
-          if (listener != null)
-            listener.onPlayheadDragged(playheadFrame);
-          return true;
-        }
-
-        if (dragMode == DRAG_SCROLL) {
-          double dx = lastTouchX - e.getX();
-          viewStartFrame += dx * viewFramesPerPixel;
-          clampView();
-          lastTouchX = e.getX();
-          invalidatePeakCache();
-          invalidate();
-          return true;
-        } else if (dragMode == DRAG_SEL_START) {
-          int f = xToFrame(e.getX());
-          int newStart = Math.min(f, selEnd);
-          int newEnd = Math.max(f, selEnd);
-          if (newStart != selStart) {
-            selStart = Math.max(0, newStart);
-            if (listener != null)
-              listener.onSelectionChanged(selStart, selEnd);
-            invalidate();
-          }
-          return true;
-        } else if (dragMode == DRAG_SEL_END) {
-          int f = xToFrame(e.getX());
-          int newStart = Math.min(selStart, f);
-          int newEnd = Math.max(selStart, f);
-          if (newEnd != selEnd) {
-            selEnd = Math.min(totalFrames, newEnd);
-            if (listener != null)
-              listener.onSelectionChanged(selStart, selEnd);
-            invalidate();
-          }
-          return true;
-        } else if (dragMode == DRAG_NEW_SELECTION) {
-          int f = xToFrame(e.getX());
-          int a = Math.min(downSelStart, f);
-          int b = Math.max(downSelStart, f);
-          selStart = Math.max(0, a);
-          selEnd = Math.min(totalFrames, b);
-          if (listener != null)
-            listener.onSelectionChanged(selStart, selEnd);
-          invalidate();
-          return true;
-        }
-        return true;
-
+        return handleActionMove(e);
       case MotionEvent.ACTION_UP:
       case MotionEvent.ACTION_CANCEL:
-        removeCallbacks(longPressRunnable);
-        // Прилипание краёв выделения к маркерам
-        if (pcm != null && hasSelection()) {
-          int mStart = nearestMarker(selStart, 15);
-          int mEnd = nearestMarker(selEnd, 15);
-          if (mStart != -1)
-            selStart = mStart;
-          if (mEnd != -1)
-            selEnd = mEnd;
-          if (selStart > selEnd) {
-            int t = selStart;
-            selStart = selEnd;
-            selEnd = t;
-          }
-          if (listener != null)
-            listener.onSelectionChanged(selStart, selEnd);
-          invalidate();
-        }
-        // Снап к нулю для выделения
-        if (zeroCrossingSnap && pcm != null && hasSelection()) {
-          int fStart = selStart;
-          int fEnd = selEnd;
-          if (fStart >= 0 && fStart < totalFrames) {
-            selStart = nearestZeroCross(fStart);
-          }
-          if (fEnd >= 0 && fEnd < totalFrames) {
-            selEnd = nearestZeroCross(fEnd);
-          }
-          if (selStart > selEnd) {
-            int t = selStart;
-            selStart = selEnd;
-            selEnd = t;
-          }
-          invalidate();
-          if (listener != null)
-            listener.onSelectionChanged(selStart, selEnd);
-        }
-
-        if (e.getActionMasked() == MotionEvent.ACTION_UP && Math.abs(e.getX() - downX) < 8
-            && Math.abs(e.getY() - downY) < 8 && e.getY() >= rulerHeightPx && !longPressActivated) {
-
-          if (downMarkerFrame != -1) {
-            if (listener != null)
-              listener.onMarkerTapped(downMarkerFrame);
-          } else {
-            int frame = xToFrame(e.getX());
-            // Прилипание к маркеру
-            int marker = nearestMarker(frame, 15);
-            if (marker != -1)
-              frame = marker;
-            if (listener != null)
-              listener.onTap(frame);
-          }
-        }
-        dragMode = DRAG_NONE;
-        downMarkerFrame = -1;
-        longPressActivated = false;
-        return true;
+        return handleActionUp(e);
     }
     return super.onTouchEvent(e);
+  }
+
+  private boolean handleActionDown(MotionEvent e) {
+    lastTouchX = e.getX();
+    downX = e.getX();
+    downY = e.getY();
+    downSelStart = selStart;
+    downSelEnd = selEnd;
+
+    // 1. Проверка чекбоксов L/R
+    if (stereoView) {
+      if (e.getX() >= checkLx && e.getX() <= checkLx + checkSize && e.getY() >= checkLy
+          && e.getY() <= checkLy + checkSize) {
+        if (!channelR)
+          return true;
+        channelL = !channelL;
+        invalidate();
+        if (listener != null)
+          listener.onChannelToggled(channelL, channelR);
+        return true;
+      }
+      if (e.getX() >= checkRx && e.getX() <= checkRx + checkSize && e.getY() >= checkRy
+          && e.getY() <= checkRy + checkSize) {
+        if (!channelL)
+          return true;
+        channelR = !channelR;
+        invalidate();
+        if (listener != null)
+          listener.onChannelToggled(channelL, channelR);
+        return true;
+      }
+    }
+
+    // 2. Проверка ручек выделения
+    if (hasSelection() && e.getY() >= rulerHeightPx) {
+      float sxStart = frameToX(selStart) + paddingPx;
+      float sxEnd = frameToX(selEnd) + paddingPx;
+      if (Math.abs(e.getX() - sxStart) <= handleHalfPx * 2) {
+        dragMode = DRAG_SEL_START;
+        return true;
+      }
+      if (Math.abs(e.getX() - sxEnd) <= handleHalfPx * 2) {
+        dragMode = DRAG_SEL_END;
+        return true;
+      }
+    }
+
+    // 3. Проверка маркеров
+    downMarkerFrame = -1;
+    if (markers != null) {
+      for (int m : markers) {
+        float mx = frameToX(m) + paddingPx;
+        if (e.getX() >= mx - 20 && e.getX() <= mx + markerFlagW + 20) {
+          downMarkerFrame = m;
+          break;
+        }
+      }
+    }
+
+    // 4. Проверка playhead
+    float playX = frameToX(playheadFrame) + paddingPx;
+    boolean onPlayhead = Math.abs(e.getX() - playX) <= 20;
+
+    if (downMarkerFrame != -1) {
+      // На маркере. Если playhead тоже здесь — даём возможность тащить.
+      dragMode = onPlayhead ? DRAG_PLAYHEAD : DRAG_SCROLL;
+      longPressActivated = false;
+      postDelayed(longPressRunnable, 350);
+      return true;
+    }
+
+    if (onPlayhead) {
+      dragMode = DRAG_PLAYHEAD;
+      return true;
+    }
+
+    // 5. Иначе — скролл
+    dragMode = DRAG_SCROLL;
+    longPressActivated = false;
+    postDelayed(longPressRunnable, 350);
+    return true;
+  }
+
+  private boolean handleActionMove(MotionEvent e) {
+    if (scaleDetector.isInProgress())
+      return true;
+
+    // Отмена long-press при движении
+    if (!longPressActivated && Math.abs(e.getX() - downX) + Math.abs(e.getY() - downY) > 12) {
+      removeCallbacks(longPressRunnable);
+      downMarkerFrame = -1;
+    }
+
+    if (dragMode == DRAG_PLAYHEAD) {
+      int f = xToFrame(e.getX());
+      int marker = nearestMarker(f, 15);
+      if (marker != -1)
+        f = marker;
+      playheadFrame = f;
+      invalidate();
+      if (listener != null)
+        listener.onPlayheadDragged(playheadFrame);
+      return true;
+    }
+
+    if (dragMode == DRAG_SCROLL) {
+      double dx = lastTouchX - e.getX();
+      viewStartFrame += dx * viewFramesPerPixel;
+      clampView();
+      lastTouchX = e.getX();
+      invalidatePeakCache();
+      invalidate();
+      return true;
+    }
+
+    if (dragMode == DRAG_SEL_START) {
+      int f = xToFrame(e.getX());
+      int newStart = Math.min(f, selEnd);
+      int newEnd = Math.max(f, selEnd);
+      if (newStart != selStart) {
+        selStart = Math.max(0, newStart);
+        if (listener != null)
+          listener.onSelectionChanged(selStart, selEnd);
+        invalidate();
+      }
+      return true;
+    }
+
+    if (dragMode == DRAG_SEL_END) {
+      int f = xToFrame(e.getX());
+      int newStart = Math.min(selStart, f);
+      int newEnd = Math.max(selStart, f);
+      if (newEnd != selEnd) {
+        selEnd = Math.min(totalFrames, newEnd);
+        if (listener != null)
+          listener.onSelectionChanged(selStart, selEnd);
+        invalidate();
+      }
+      return true;
+    }
+
+    if (dragMode == DRAG_NEW_SELECTION) {
+      int f = xToFrame(e.getX());
+      int a = Math.min(downSelStart, f);
+      int b = Math.max(downSelStart, f);
+      selStart = Math.max(0, a);
+      selEnd = Math.min(totalFrames, b);
+      if (listener != null)
+        listener.onSelectionChanged(selStart, selEnd);
+      invalidate();
+      return true;
+    }
+
+    return true;
+  }
+
+  private boolean handleActionUp(MotionEvent e) {
+    removeCallbacks(longPressRunnable);
+
+    // Снап к нулю для выделения
+    if (zeroCrossingSnap && pcm != null && hasSelection()) {
+      int fStart = selStart;
+      int fEnd = selEnd;
+      if (fStart >= 0 && fStart < totalFrames) {
+        selStart = nearestZeroCross(fStart);
+      }
+      if (fEnd >= 0 && fEnd < totalFrames) {
+        selEnd = nearestZeroCross(fEnd);
+      }
+      if (selStart > selEnd) {
+        int t = selStart;
+        selStart = selEnd;
+        selEnd = t;
+      }
+      invalidate();
+      if (listener != null)
+        listener.onSelectionChanged(selStart, selEnd);
+    }
+
+    // Короткий тап (не долгий)
+    if (e.getActionMasked() == MotionEvent.ACTION_UP && Math.abs(e.getX() - downX) < 8
+        && Math.abs(e.getY() - downY) < 8 && e.getY() >= rulerHeightPx && !longPressActivated) {
+
+      if (downMarkerFrame != -1) {
+        if (listener != null)
+          listener.onMarkerTapped(downMarkerFrame);
+      } else {
+        int frame = xToFrame(e.getX());
+        int marker = nearestMarker(frame, 15);
+        if (marker != -1)
+          frame = marker;
+        if (listener != null)
+          listener.onTap(frame);
+      }
+    }
+
+    dragMode = DRAG_NONE;
+    downMarkerFrame = -1;
+    longPressActivated = false;
+    return true;
   }
 
   private int xToFrame(float x) {

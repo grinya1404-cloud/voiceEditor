@@ -114,11 +114,32 @@ public class AudioInfoDialog {
     if (clip.markers.size() > 10) {
       sb.append("  ... и ещё ").append(clip.markers.size() - 10).append("\n");
     }
+
+    // --- Интервалы экспорта ---
+    if (clip.exportIntervals != null && !clip.exportIntervals.isEmpty()) {
+      sb.append("=== ИНТЕРВАЛЫ ЭКСПОРТА ===\n");
+      for (int i = 0; i < clip.exportIntervals.size(); i++) {
+        int[] interval = clip.exportIntervals.get(i);
+        int startMs = interval[0] * 1000 / clip.sampleRate;
+        int endMs = interval[1] * 1000 / clip.sampleRate;
+
+        int mm1 = startMs / 60000;
+        int ss1 = (startMs % 60000) / 1000;
+        int rr1 = startMs % 1000;
+        int mm2 = endMs / 60000;
+        int ss2 = (endMs % 60000) / 1000;
+        int rr2 = endMs % 1000;
+
+        sb.append(String.format(Locale.US, "  %d: %02d:%02d.%03d – %02d:%02d.%03d\n", i + 1, mm1,
+            ss1, rr1, mm2, ss2, rr2));
+      }
+      sb.append("\n");
+    }
+
     // Исходный файл (из .meta)
     if (clip.dir != null) {
       com.grinya.voicesampleprep.model.AudioMeta meta = com.grinya.voicesampleprep.model.AudioMeta
           .load(clip.dir);
-
       sb.append("=== ИСХОДНЫЙ ФАЙЛ ===\n");
       if (meta.sampleRate > 0 || meta.channels > 0) {
         if (meta.sampleRate > 0)
@@ -136,5 +157,5 @@ public class AudioInfoDialog {
     }
     return sb.toString();
   }
-  
+
 }

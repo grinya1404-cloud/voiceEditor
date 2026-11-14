@@ -90,6 +90,12 @@ public class BankManager {
     WavReader.Result r = WavReader.read(wavFile);
     AudioClip c = new AudioClip(wavFile.getName(), r.pcm, r.sampleRate);
     c.dir = wavFile;
+
+    // Автоматически подтягиваем метаданные
+    AudioMeta meta = AudioMeta.load(wavFile);
+    c.markers = meta.markers;
+    c.exportIntervals = meta.exportIntervals;
+
     return c;
   }
 
