@@ -44,7 +44,6 @@ public class EditActivity extends AppCompatActivity
   private boolean isLeftEnabled = true;
   private boolean isRightEnabled = true;
   private final java.util.ArrayList<String> recentActions = new java.util.ArrayList<>();
-
   private float[] clipboard = null; // Внутренний буфер обмена
 
   @Override
