@@ -2,7 +2,7 @@ package com.grinya.voicesampleprep.model;
 
 import com.grinya.voicesampleprep.edit.UndoStack;
 import com.grinya.voicesampleprep.util.AudioOps;
-
+import com.grinya.voicesampleprep.audio.WavWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -378,13 +378,11 @@ public class AudioClip {
   public void save() throws IOException {
     if (dir == null)
       throw new IOException("No file");
-    com.grinya.voicesampleprep.audio.WavWriter.write(dir, pcm, sampleRate, sampleRate, 16, false,
-        false, false, false, false);
+    WavWriter.write(dir, pcm, sampleRate, sampleRate, 16, false, false, false, false, false);
 
     AudioMeta meta = AudioMeta.load(dir);
     meta.markers = new ArrayList<>(markers);
     meta.exportIntervals = new ArrayList<>(exportIntervals);
-    // Не заполняем sampleRate/channels/bits/format, если их не было
     AudioMeta.save(dir, meta);
   }
 

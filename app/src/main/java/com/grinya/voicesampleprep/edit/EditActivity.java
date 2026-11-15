@@ -144,6 +144,7 @@ public class EditActivity extends AppCompatActivity
           case 1: // Сохранить
             try {
               clip.save();
+              isChanged = false;
               Toast.makeText(this, "Сохранено", Toast.LENGTH_SHORT).show();
             } catch (Exception e) {
               Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -730,6 +731,7 @@ public class EditActivity extends AppCompatActivity
     if (pendingStartMarker == frame) {
       pendingStartMarker = -1;
       Toast.makeText(this, "Соединение отменено", Toast.LENGTH_SHORT).show();
+      isChanged = true; 
       return;
     }
 
@@ -752,10 +754,11 @@ public class EditActivity extends AppCompatActivity
       } else if (clip.addExportInterval(start, end)) {
         Toast.makeText(this, "Интервал создан", Toast.LENGTH_SHORT).show();
         wave.updateExportIntervals(clip.exportIntervals);
-        try {
-          clip.save();
-        } catch (Exception ignored) {
-        }
+        // try {
+        // clip.save();
+        // } catch (Exception ignored) {
+        // }
+        isChanged = true;
       } else {
         Toast.makeText(this, "Не удалось создать интервал", Toast.LENGTH_SHORT).show();
       }
@@ -789,10 +792,11 @@ public class EditActivity extends AppCompatActivity
           } else if (choice.equals("Отменить соединение")) {
             clip.removeExportIntervalsWithMarker(frame);
             wave.updateExportIntervals(clip.exportIntervals);
-            try {
-              clip.save();
-            } catch (Exception ignored) {
-            }
+            // try {
+            // clip.save();
+            // } catch (Exception ignored) {
+            // }
+            isChanged = true;
             Toast.makeText(this, "Соединение отменено", Toast.LENGTH_SHORT).show();
           } else if (choice.equals("Удалить маркер")) {
             clip.removeExportIntervalsWithMarker(frame);
@@ -800,10 +804,11 @@ public class EditActivity extends AppCompatActivity
             wave.updateMarkers(clip.markers);
             wave.updateExportIntervals(clip.exportIntervals);
             isChanged = true;
-            try {
-              clip.save();
-            } catch (Exception ignored) {
-            }
+            // try {
+            // clip.save();
+            // } catch (Exception ignored) {
+            // }
+            isChanged = true;
           }
         }).setNegativeButton("Отмена", null).show();
   }
@@ -837,15 +842,12 @@ public class EditActivity extends AppCompatActivity
   }
 
   private void confirmExit() {
-    // времянка удалить
-    android.util.Log.d("EXIT", "confirmExit, isChanged=" + isChanged);
     if (isChanged) {
       new AlertDialog.Builder(this).setTitle("Выйти без сохранения?")
           .setMessage("В файле есть несохранённые изменения.")
           .setPositiveButton("Сохранить", (d, w) -> {
             try {
               clip.save();
-              // MarkerStore.save(clip.dir, clip.markers);
               isChanged = false;
               finish();
             } catch (Exception e) {
