@@ -46,6 +46,15 @@ public class EditActivity extends AppCompatActivity
   private final java.util.ArrayList<String> recentActions = new java.util.ArrayList<>();
   private float[] clipboard = null; // Внутренний буфер обмена
   private int pendingStartMarker = -1; // Маркер, ожидающий соединения
+  private static int forcedStart = -1;
+  private static int forcedEnd = -1;
+  private int forcedStartLocal = -1;
+  private int forcedEndLocal = -1;
+
+  public static void setForcedInterval(int start, int end) {
+    forcedStart = start;
+    forcedEnd = end;
+  }
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -951,8 +960,7 @@ public class EditActivity extends AppCompatActivity
                   }
                   break;
                 case 2: // Экспортировать
-                  // ExportActivity.setForcedInterval(startFrame, endFrame);
-                  // TODO: реализовать принудительный интервал в ExportActivity
+                  ExportActivity.setForcedInterval(startFrame, endFrame);
                   ExportActivity.setSource(clip, -1, -1);
                   startActivity(new Intent(this, ExportActivity.class));
                   break;
@@ -962,8 +970,7 @@ public class EditActivity extends AppCompatActivity
                   startActivity(new Intent(this, ExportToBankActivity.class));
                   break;
                 case 4: // Инфо
-                  AudioInfoDialog.show(this, clip, startFrame, endFrame);
-                  // AudioInfoDialog.showInterval(this, clip, startFrame, endFrame);
+                  AudioInfoDialog.showInterval(this, clip, startFrame, endFrame);
                   break;
               }
             })

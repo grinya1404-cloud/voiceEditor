@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import android.widget.Button;
 import com.grinya.voicesampleprep.util.ExportUtils;
+import android.view.View;
 
 public class ExportActivity extends AppCompatActivity {
 
@@ -36,6 +37,17 @@ public class ExportActivity extends AppCompatActivity {
   private boolean isOriginalMode = false;
   private final java.util.ArrayList<String> recentActions = new java.util.ArrayList<>();
 
+  // Принудительный интервал (из меню интервала)
+  private static int forcedStart = -1;
+  private static int forcedEnd = -1;
+  private int forcedStartLocal = -1;
+  private int forcedEndLocal = -1;
+
+  public static void setForcedInterval(int start, int end) {
+    forcedStart = start;
+    forcedEnd = end;
+  }
+
   public static void setSource(AudioClip clip, int s, int e) {
     source = clip;
     selStart = s;
@@ -49,13 +61,20 @@ public class ExportActivity extends AppCompatActivity {
       finish();
       return;
     }
+    // Забираем принудительный интервал и обнуляем статику
+    forcedStartLocal = forcedStart;
+    forcedEndLocal = forcedEnd;
+    forcedStart = -1;
+    forcedEnd = -1;
     setContentView(R.layout.activity_export);
 
     if (source != null) {
       bankClips = null; // сбрасываем режим банка
       // Загружаем .meta для умного экспорта
       originalMeta = AudioMeta.load(source.dir);
-
+      if (forcedStartLocal != -1) {
+        findViewById(R.id.rgMode).setVisibility(View.GONE);
+      }
       // Автоматически ставим рекомендуемые параметры
       if (originalMeta.channels == 1) {
         ((RadioButton) findViewById(R.id.rbTrueMono)).setChecked(true);
@@ -179,15 +198,21 @@ public class ExportActivity extends AppCompatActivity {
     ExportSettings settings = readSettings();
 
     if (bankClips != null && !bankClips.isEmpty()) {
-      // Режим экспорта всего банка
       exportBank(treeUri, settings);
       return;
     }
 
-    // Режим одного файла (как было)
-    List<int[]> ranges = buildRanges(settings.byMarkers);
+    List<int[]> ranges = new ArrayList<>();
+    if (forcedStartLocal != -1 && forcedEndLocal > forcedStartLocal) {
+      ranges.add(new int[] { forcedStartLocal, forcedEndLocal });
+    } else {
+      ranges = buildRanges(settings.byMarkers);
+    }
+
     if (ranges.isEmpty())
       return;
+
+    final List<int[]> finalRanges = ranges; // <-- ФИНАЛЬНАЯ КОПИЯ
 
     final String baseName = stripExt(source.name);
     final List<String> written = new ArrayList<>();
@@ -196,8 +221,8 @@ public class ExportActivity extends AppCompatActivity {
         .fromTreeUri(this, treeUri);
 
     new Thread(() -> {
-      for (int idx = 0; idx < ranges.size(); idx++) {
-        int[] r = ranges.get(idx);
+      for (int idx = 0; idx < finalRanges.size(); idx++) {
+        int[] r = finalRanges.get(idx);
         String fileName = "";
         try {
           fileName = exportSingleRangeFromClip(treeUri, dir, source, r, idx + 1, settings);

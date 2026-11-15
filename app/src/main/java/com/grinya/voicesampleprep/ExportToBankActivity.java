@@ -60,17 +60,13 @@ public class ExportToBankActivity extends AppCompatActivity {
     }
 
     // Забираем принудительный интервал и сразу сбрасываем статику
-    int localForcedStart = forcedStart;
-    int localForcedEnd = forcedEnd;
+    this.forcedStartLocal = forcedStart;
+    this.forcedEndLocal = forcedEnd;
     forcedStart = -1;
     forcedEnd = -1;
 
-    // Сохраняем в поля экземпляра (или используем локальные)
-    this.forcedStartLocal = localForcedStart;
-    this.forcedEndLocal = localForcedEnd;
-
-    if (forcedStart != -1) {
-      // Скрываем выбор режима, так как экспортируем конкретный интервал
+    // Скрываем выбор режима, если есть принудительный интервал
+    if (forcedStartLocal != -1) {
       findViewById(R.id.rgMode).setVisibility(View.GONE);
     }
 

@@ -158,4 +158,50 @@ public class AudioInfoDialog {
     return sb.toString();
   }
 
+  public static void showInterval(Context context, AudioClip clip, int startFrame, int endFrame) {
+    if (clip == null || clip.pcm == null || clip.pcm.length == 0) {
+      Toast.makeText(context, "Нет данных", Toast.LENGTH_SHORT).show();
+      return;
+    }
+
+    // Вырезаем интервал и анализируем
+    float[] range = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, startFrame, endFrame);
+    com.grinya.voicesampleprep.util.AudioInfo info = com.grinya.voicesampleprep.util.AudioInfo
+        .analyze(range, clip.sampleRate);
+
+    // Номера меток, которые образуют интервал
+    int startMarkerNum = clip.markers.indexOf(startFrame) + 1;
+    int endMarkerNum = clip.markers.indexOf(endFrame) + 1;
+
+    StringBuilder sb = new StringBuilder();
+    int startMs = startFrame * 1000 / clip.sampleRate;
+    int endMs = endFrame * 1000 / clip.sampleRate;
+    int durationMs = endMs - startMs;
+
+    sb.append("=== ИНТЕРВАЛ ===\n");
+    sb.append("Начало: ").append(formatMs(startMs)).append("\n");
+    sb.append("Конец: ").append(formatMs(endMs)).append("\n");
+    sb.append("Длительность: ").append(formatMs(durationMs)).append("\n");
+    sb.append("Метки: ").append(startMarkerNum).append(" → ").append(endMarkerNum).append("\n");
+    sb.append("\n");
+
+    sb.append("=== АНАЛИЗ СИГНАЛА ===\n");
+    sb.append(String.format(java.util.Locale.US, "Peak: %.1f dB\n", info.peakDB));
+    sb.append(String.format(java.util.Locale.US, "RMS:  %.1f dB\n", info.rmsDB));
+    sb.append("Клиппинг: ").append(info.clipping ? "ДА (!)" : "нет").append("\n");
+
+    View view = android.view.LayoutInflater.from(context).inflate(R.layout.dialog_info, null);
+    ((TextView) view.findViewById(R.id.txtInfo)).setText(sb.toString());
+
+    new AlertDialog.Builder(context).setTitle("Инфо интервала").setView(view)
+        .setPositiveButton("OK", null).show();
+  }
+
+  private static String formatMs(int ms) {
+    int m = ms / 60000;
+    int s = (ms % 60000) / 1000;
+    int r = ms % 1000;
+    return String.format(java.util.Locale.US, "%02d:%02d.%03d", m, s, r);
+  }
+
 }
