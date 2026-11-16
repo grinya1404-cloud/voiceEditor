@@ -338,20 +338,34 @@ public class ExportActivity extends AppCompatActivity {
     if (fileUri == null)
       return null;
 
-    java.io.File tmp = new java.io.File(getCacheDir(), "exp_tmp.wav");
-    com.grinya.voicesampleprep.audio.WavWriter.write(tmp, rangePcm, clip.sampleRate, s.rate, s.bits,
-        s.stereoMono, s.trueMono, s.normalize, s.fade, s.trimSilence, s.denoise);
+    // D4: уникальный временный файл + гарантированное удаление
+    java.io.File tmp = java.io.File.createTempFile("exp_", ".wav", getCacheDir());
+    try {
+      com.grinya.voicesampleprep.audio.WavWriter.write(tmp, rangePcm, clip.sampleRate, s.rate,
+          s.bits, s.stereoMono, s.trueMono, s.normalize, s.fade, s.trimSilence, s.denoise);
 
-    try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(fileUri, "w");
-        FileOutputStream out = new FileOutputStream(pfd.getFileDescriptor());
-        java.io.FileInputStream in = new java.io.FileInputStream(tmp)) {
-      byte[] buf = new byte[65536];
-      int n;
-      while ((n = in.read(buf)) > 0)
-        out.write(buf, 0, n);
+      if (tmp.length() == 0) {
+        android.util.Log.w("EXPORT", "Пустой WAV для " + fileName);
+        deleteCreated(fileUri);
+        return null;
+      }
+
+      try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(fileUri, "w");
+          FileOutputStream out = new FileOutputStream(pfd.getFileDescriptor());
+          java.io.FileInputStream in = new java.io.FileInputStream(tmp)) {
+        byte[] buf = new byte[65536];
+        int n;
+        while ((n = in.read(buf)) > 0)
+          out.write(buf, 0, n);
+      }
+      return fileName;
+    } catch (Exception e) {
+      deleteCreated(fileUri);
+      throw e;
+    } finally {
+      // noinspection ResultOfMethodCallIgnored
+      tmp.delete();
     }
-    tmp.delete();
-    return fileName;
   }
 
   private void showExportResult(int written, int failed) {
@@ -375,6 +389,15 @@ public class ExportActivity extends AppCompatActivity {
       return null;
     }
   }
+  
+  private void deleteCreated(Uri fileUri) {
+  try {
+    androidx.documentfile.provider.DocumentFile f =
+        androidx.documentfile.provider.DocumentFile.fromSingleUri(this, fileUri);
+    if (f != null) f.delete();
+  } catch (Exception ignored) {
+  }
+}
 
   private static String buildName(String template, String base, int index) {
     String out = template.replace("{name}", base).replace("{index}",

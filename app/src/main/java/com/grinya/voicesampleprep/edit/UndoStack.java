@@ -1,26 +1,35 @@
 package com.grinya.voicesampleprep.edit;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * История состояний PCM. Хранит снапшоты float[].
- * Ограничение по суммарной памяти (по умолчанию 128 МБ — с запасом для 60-сек стерео).
+ * Ограничение по суммарной памяти (по умолчанию 64 МБ — с запасом для 1-мин стерео).
  */
 public class UndoStack {
 
     public static class Snapshot {
         public final float[] pcm;
-        public final java.util.List<Integer> markers;
+        public final List<Integer> markers;
+        public final List<int[]> exportIntervals;
 
-        public Snapshot(float[] pcm, java.util.List<Integer> markers) {
+        public Snapshot(float[] pcm, List<Integer> markers, List<int[]> exportIntervals) {
             this.pcm = pcm;
-            this.markers = new java.util.ArrayList<>(markers);
+            this.markers = new ArrayList<>(markers);
+            this.exportIntervals = new ArrayList<>();
+            if (exportIntervals != null) {
+                for (int[] i : exportIntervals) {
+                    this.exportIntervals.add(new int[]{i[0], i[1]});
+                }
+            }
         }
     }
 
     private final ArrayDeque<Snapshot> undo = new ArrayDeque<>();
     private final ArrayDeque<Snapshot> redo = new ArrayDeque<>();
-    private long maxBytes;
+    private final long maxBytes;
     private long currentBytes = 0;
 
     public UndoStack(long maxBytes) {
@@ -28,12 +37,12 @@ public class UndoStack {
     }
 
     public UndoStack() {
-        this(128L * 1024 * 1024);
+        this(64L * 1024 * 1024); // 64 МБ
     }
 
     /** Сохранить состояние ПЕРЕД изменением. */
-    public void push(float[] pcm, java.util.List<Integer> markers) {
-        Snapshot s = new Snapshot(pcm, markers);
+    public void push(float[] pcm, List<Integer> markers, List<int[]> exportIntervals) {
+        Snapshot s = new Snapshot(pcm, markers, exportIntervals);
         undo.push(s);
         currentBytes += (long) pcm.length * 4;
         redo.clear();
@@ -47,20 +56,23 @@ public class UndoStack {
     public boolean canUndo() { return !undo.isEmpty(); }
     public boolean canRedo() { return !redo.isEmpty(); }
 
+    public long getCurrentBytes() { return currentBytes; }
+    public long getMaxBytes() { return maxBytes; }
+
     /** Вернуть предыдущее состояние и положить текущее в redo. */
-    public Snapshot undo(float[] currentPcm, java.util.List<Integer> currentMarkers) {
+    public Snapshot undo(float[] pcm, List<Integer> markers, List<int[]> exportIntervals) {
         if (undo.isEmpty()) return null;
         Snapshot prev = undo.pop();
         currentBytes -= (long) prev.pcm.length * 4;
-        Snapshot cur = new Snapshot(currentPcm, currentMarkers);
+        Snapshot cur = new Snapshot(pcm, markers, exportIntervals);
         redo.push(cur);
         return prev;
     }
 
-    public Snapshot redo(float[] currentPcm, java.util.List<Integer> currentMarkers) {
+    public Snapshot redo(float[] pcm, List<Integer> markers, List<int[]> exportIntervals) {
         if (redo.isEmpty()) return null;
         Snapshot next = redo.pop();
-        Snapshot cur = new Snapshot(currentPcm, currentMarkers);
+        Snapshot cur = new Snapshot(pcm, markers, exportIntervals);
         undo.push(cur);
         currentBytes += (long) cur.pcm.length * 4;
         return next;

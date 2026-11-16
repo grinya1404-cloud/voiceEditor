@@ -47,11 +47,6 @@ public class AudioClip {
   }
 
   /**
-   * Автоматически обрезает тишину в начале и конце.
-   * 
-   * @param threshold Порог амплитуды (0..1). Например, 0.003f (это ~ -50 dB).
-   */
-  /**
    * Автоматически обрезает тишину.
    * 
    * @param startFrame начальный фрейм (0, если весь файл)
@@ -60,6 +55,7 @@ public class AudioClip {
    * @param applyL     учитывать левый канал
    * @param applyR     учитывать правый канал
    */
+  // TODO проверить метод
   public void autoTrim(int startFrame, int endFrame, float threshold, boolean applyL,
       boolean applyR) {
     if (pcm == null || pcm.length == 0)
@@ -71,40 +67,84 @@ public class AudioClip {
     if (e <= s)
       return;
 
-    // Вырезаем кусок
     float[] range = AudioOps.trim(pcm, s, e);
+    int rangeFrames = range.length / CHANNELS;
 
-    // Вычисляем каналы (1 или 2)
-    int ch = 2;
-    // (Если хочешь, чтобы для моно был 1 канал, добавь проверку, но у нас всегда стерео)
-
-    // Применяем trimSilence
-    float[] trimmed = AudioOps.trimSilence(range, threshold, ch);
-
-    // Если ничего не обрезалось (тишина не найдена), выходим
-    if (trimmed.length == 0)
-      return;
-    if (trimmed.length == range.length)
+    float[] trimmed = AudioOps.trimSilence(range, threshold, CHANNELS);
+    int trimmedFrames = trimmed.length / CHANNELS;
+    if (trimmed.length == 0 || trimmed.length == range.length)
       return;
 
-    // Вставляем обратно (заменяем выделенный кусок на обрезанный)
+    // Сколько тишины обрезано в начале/конце (в фреймах)
+    int startSilence = 0;
+    for (int i = 0; i < rangeFrames; i++) {
+      boolean silent = true;
+      for (int c = 0; c < CHANNELS; c++) {
+        if (Math.abs(range[i * CHANNELS + c]) >= threshold) {
+          silent = false;
+          break;
+        }
+      }
+      if (!silent)
+        break;
+      startSilence++;
+    }
+    int endSilence = rangeFrames - trimmedFrames - startSilence;
+    if (endSilence < 0)
+      endSilence = 0;
+
+    // Новый PCM
     float[] newPcm = new float[pcm.length - range.length + trimmed.length];
-    System.arraycopy(pcm, 0, newPcm, 0, s * 2);
-    System.arraycopy(trimmed, 0, newPcm, s * 2, trimmed.length);
-    System.arraycopy(pcm, e * 2, newPcm, (s * 2) + trimmed.length, (total - e) * 2);
+    System.arraycopy(pcm, 0, newPcm, 0, s * CHANNELS);
+    System.arraycopy(trimmed, 0, newPcm, s * CHANNELS, trimmed.length);
+    System.arraycopy(pcm, e * CHANNELS, newPcm, (s * CHANNELS) + trimmed.length,
+        (total - e) * CHANNELS);
 
     pushHistory();
     pcm = newPcm;
 
-    // Корректируем маркеры (удаляем те, что были внутри вырезанного)
-    List<Integer> newMarkers = new ArrayList<>();
+    // --- Пересчёт маркеров ---
+    int newStart = s;
+    int newEnd = s + trimmedFrames - 1;
+    if (newEnd < newStart)
+      newEnd = newStart;
+
+    java.util.TreeSet<Integer> outMarkers = new java.util.TreeSet<>();
     for (int m : markers) {
-      if (m < s)
-        newMarkers.add(m);
-      else if (m >= e)
-        newMarkers.add(m - (range.length - trimmed.length) / 2);
+      outMarkers.add(remapFrame(m, s, e, startSilence, endSilence, rangeFrames, newStart, newEnd));
     }
-    markers = newMarkers;
+    markers = new ArrayList<>(outMarkers);
+
+    // --- Пересчёт интервалов ---
+    java.util.TreeSet<String> seen = new java.util.TreeSet<>();
+    java.util.List<int[]> outIntervals = new java.util.ArrayList<>();
+    for (int[] iv : exportIntervals) {
+      int a = remapFrame(iv[0], s, e, startSilence, endSilence, rangeFrames, newStart, newEnd);
+      int b = remapFrame(iv[1], s, e, startSilence, endSilence, rangeFrames, newStart, newEnd);
+      if (b <= a)
+        continue; // схлопнулся — удалить
+      String key = a + ":" + b;
+      if (seen.add(key))
+        outIntervals.add(new int[] { a, b });
+    }
+    exportIntervals = outIntervals;
+  }
+
+  /**
+   * Пересчёт одного фрейма после autoTrim. Возвращает новую координату фрейма.
+   */
+  private static int remapFrame(int m, int s, int e, int startSilence, int endSilence,
+      int rangeFrames, int newStart, int newEnd) {
+    if (m < s)
+      return m;
+    if (m >= e)
+      return m - (startSilence + endSilence);
+    int local = m - s;
+    if (local < startSilence)
+      return newStart;
+    if (local >= rangeFrames - endSilence)
+      return newEnd;
+    return s + local - startSilence;
   }
 
   public void delete(int startFrame, int endFrame) {
@@ -186,17 +226,16 @@ public class AudioClip {
     markers = newMarkers;
   }
 
-  public void invertPhaseRange(int startFrame, int endFrame, boolean applyL, boolean applyR) {
-    pushHistory();
-    pcm = AudioOps.invertPhase(pcm, startFrame, endFrame, applyL, applyR);
-  }
-
   /**
    * Инвертирует фазу. Если выделения нет (selStart == -1), инвертирует весь файл.
    */
   public void invertPhase(int startFrame, int endFrame, boolean applyL, boolean applyR) {
     pushHistory();
     pcm = AudioOps.invertPhase(pcm, startFrame, endFrame, applyL, applyR);
+  }
+
+  public void invertPhaseRange(int s, int e, boolean l, boolean r) {
+    invertPhase(s, e, l, r);
   }
 
   public void setPcm(float[] newPcm) {
@@ -207,7 +246,25 @@ public class AudioClip {
   // ---------- undo/redo ----------
 
   private void pushHistory() {
-    history.push(pcm.clone(), markers);
+    history.push(pcm.clone(), markers, exportIntervals);
+  }
+
+  public void undo() {
+    UndoStack.Snapshot s = history.undo(pcm, markers, exportIntervals);
+    if (s != null) {
+      pcm = s.pcm;
+      markers = s.markers;
+      exportIntervals = s.exportIntervals;
+    }
+  }
+
+  public void redo() {
+    UndoStack.Snapshot s = history.redo(pcm, markers, exportIntervals);
+    if (s != null) {
+      pcm = s.pcm;
+      markers = s.markers;
+      exportIntervals = s.exportIntervals;
+    }
   }
 
   public boolean canUndo() {
@@ -218,38 +275,29 @@ public class AudioClip {
     return history.canRedo();
   }
 
-  public void undo() {
-    UndoStack.Snapshot s = history.undo(pcm, markers);
-    if (s != null) {
-      pcm = s.pcm;
-      markers = s.markers;
-    }
-  }
-
-  public void redo() {
-    UndoStack.Snapshot s = history.redo(pcm, markers);
-    if (s != null) {
-      pcm = s.pcm;
-      markers = s.markers;
-    }
-  }
-
   // ---------- маркеры ----------
 
   public void addMarker(int frame) {
     frame = Math.max(0, Math.min(frameCount() - 1, frame));
     if (!markers.contains(frame)) {
+      pushHistory(); // <-- добавить
       markers.add(frame);
       Collections.sort(markers);
     }
   }
 
   public void removeMarker(int frame) {
-    markers.remove(Integer.valueOf(frame));
+    if (markers.contains(frame)) {
+      pushHistory(); // <-- добавить
+      markers.remove(Integer.valueOf(frame));
+    }
   }
 
   public void clearMarkers() {
-    markers.clear();
+    if (!markers.isEmpty()) {
+      pushHistory(); // <-- добавить
+      markers.clear();
+    }
   }
 
   // ---------- коррекция маркеров ----------
@@ -457,30 +505,65 @@ public class AudioClip {
   public boolean addExportInterval(int startMarker, int endMarker) {
     if (startMarker >= endMarker)
       return false;
-
-    // Проверка на дубликат (тот же самый интервал)
     for (int[] i : exportIntervals) {
       if (i[0] == startMarker && i[1] == endMarker)
         return false;
     }
-
+    pushHistory(); // <-- добавить
     exportIntervals.add(new int[] { startMarker, endMarker });
     return true;
   }
 
   /** Удалить интервал по началу и концу. */
   public void removeExportInterval(int startMarker, int endMarker) {
+    pushHistory(); // <-- добавить (или только если есть что удалять)
     exportIntervals.removeIf(i -> i[0] == startMarker && i[1] == endMarker);
   }
 
   /** Удалить все интервалы, где участвует маркер. */
   public void removeExportIntervalsWithMarker(int marker) {
+    pushHistory(); // <-- добавить
     exportIntervals.removeIf(i -> i[0] == marker || i[1] == marker);
   }
 
   /** Очистить все интервалы. */
   public void clearExportIntervals() {
-    exportIntervals.clear();
+    if (!exportIntervals.isEmpty()) {
+      pushHistory(); // <-- добавить
+      exportIntervals.clear();
+    }
+  }
+
+  private void fixExportIntervalsAfterTrim(int startFrame, int endFrame) {
+    int span = endFrame - startFrame;
+    List<int[]> out = new ArrayList<>();
+    for (int[] iv : exportIntervals) {
+      int a = Math.max(iv[0], startFrame) - startFrame;
+      int b = Math.min(iv[1], endFrame) - startFrame;
+      if (b > a)
+        out.add(new int[] { a, b });
+    }
+    exportIntervals = out;
+  }
+
+  private void fixExportIntervalsAfterDelete(int startFrame, int endFrame) {
+    int removed = endFrame - startFrame;
+    List<int[]> out = new ArrayList<>();
+    for (int[] iv : exportIntervals) {
+      int a = iv[0], b = iv[1];
+      if (b <= startFrame)
+        out.add(new int[] { a, b });
+      else if (a >= endFrame)
+        out.add(new int[] { a - removed, b - removed });
+      else {
+        // пересекает удаление — обрезаем
+        int na = a < startFrame ? a : startFrame;
+        int nb = b > endFrame ? b - removed : startFrame;
+        if (nb > na)
+          out.add(new int[] { na, nb });
+      }
+    }
+    exportIntervals = out;
   }
 
 }

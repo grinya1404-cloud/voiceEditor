@@ -149,11 +149,13 @@ public class ExportToBankActivity extends AppCompatActivity {
               false, false, false);
 
           // .meta
+          AudioMeta oldMeta = AudioMeta.load(clip.dir); // исходные параметры
           AudioMeta meta = new AudioMeta();
-          meta.sampleRate = clip.sampleRate;
-          meta.channels = clip.channels;
-          meta.bits = 16;
-          meta.format = "wav";
+          meta.sampleRate = oldMeta.sampleRate > 0 ? oldMeta.sampleRate : clip.sampleRate;
+          meta.channels = oldMeta.channels > 0 ? oldMeta.channels : clip.channels;
+          meta.bits = oldMeta.bits;
+          meta.format = oldMeta.format != null && !oldMeta.format.isEmpty() ? oldMeta.format
+              : "wav";
           AudioMeta.save(outFile, meta);
 
           saved[0]++;

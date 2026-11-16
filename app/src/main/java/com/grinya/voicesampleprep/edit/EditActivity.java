@@ -122,12 +122,14 @@ public class EditActivity extends AppCompatActivity
       if (clip.canUndo()) {
         clip.undo();
         refreshAfterChange();
+        wave.updateExportIntervals(clip.exportIntervals); // <-- добавить
       }
     });
     findViewById(R.id.btnRedo).setOnClickListener(v -> {
       if (clip.canRedo()) {
         clip.redo();
         refreshAfterChange();
+        wave.updateExportIntervals(clip.exportIntervals); // <-- добавить
       }
     });
 
@@ -173,25 +175,27 @@ public class EditActivity extends AppCompatActivity
   }
 
   private void updateDynamicButtons() {
-    // Button btn1 = findViewById(R.id.btnDynamic1);
-    // Button btn2 = findViewById(R.id.btnDynamic2);
     TextView btn1 = findViewById(R.id.btnDynamic1);
     TextView btn2 = findViewById(R.id.btnDynamic2);
 
     if (recentActions.size() > 0) {
-      btn1.setText(recentActions.get(0));
+      final String a1 = recentActions.get(0);
+      btn1.setText(a1);
       btn1.setVisibility(View.VISIBLE);
-      btn1.setOnClickListener(v -> executeActionByName(recentActions.get(0)));
+      btn1.setOnClickListener(v -> executeActionByName(a1));
     } else {
       btn1.setVisibility(View.GONE);
+      btn1.setOnClickListener(null);
     }
 
     if (recentActions.size() > 1) {
-      btn2.setText(recentActions.get(1));
+      final String a2 = recentActions.get(1);
+      btn2.setText(a2);
       btn2.setVisibility(View.VISIBLE);
-      btn2.setOnClickListener(v -> executeActionByName(recentActions.get(1)));
+      btn2.setOnClickListener(v -> executeActionByName(a2));
     } else {
       btn2.setVisibility(View.GONE);
+      btn2.setOnClickListener(null);
     }
   }
 
@@ -205,24 +209,30 @@ public class EditActivity extends AppCompatActivity
             "audio/mp4", "audio/aac", "audio/flac", "audio/x-flac", "audio/*" });
         startActivityForResult(i, REQ_INSERT);
         break;
+
       case "Silence":
         if (!requireSelection())
           return;
         clip.silence(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
         refreshAfterChange();
         break;
+
       case "Gain":
         showGainDialog();
         break;
+
       case "Normalize":
         showNormalizeDialog();
         break;
+
       case "Fade In":
         showFadeDialog(true);
         break;
+
       case "Fade Out":
         showFadeDialog(false);
         break;
+
       case "Reverse":
         if (wave.hasSelection())
           clip.reverseRange(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
@@ -230,6 +240,7 @@ public class EditActivity extends AppCompatActivity
           clip.reverse(applyL(), applyR());
         refreshAfterChange();
         break;
+
       case "Invert":
         if (wave.hasSelection())
           clip.invertPhase(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
@@ -237,12 +248,29 @@ public class EditActivity extends AppCompatActivity
           clip.invertPhase(0, clip.frameCount(), applyL(), applyR());
         refreshAfterChange();
         break;
+
       case "To Mono":
         if (wave.hasSelection())
           clip.mixToMonoRange(wave.getSelStart(), wave.getSelEnd());
         else
           clip.mixToMonoRange(0, clip.frameCount());
         refreshAfterChange();
+        break;
+
+      case "Auto-Trim":
+        showAutoTrimDialog();
+        break;
+
+      case "High-Pass":
+        showHighPassDialog();
+        break;
+
+      case "Denoise":
+        runDenoise();
+        break;
+
+      case "Channels":
+        runChannels();
         break;
     }
   }
@@ -342,111 +370,12 @@ public class EditActivity extends AppCompatActivity
             recentActions.remove(2);
           updateDynamicButtons();
         }
-
-        switch (item.getItemId()) {
-          case 1: // Denoise
-            if (clip.pcm == null || clip.pcm.length == 0)
-              return true;
-            int start = wave.hasSelection() ? wave.getSelStart() : 0;
-            int end = wave.hasSelection() ? wave.getSelEnd() : clip.frameCount();
-            float[] range = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, start, end);
-            Toast.makeText(this, "Обработка Denoise...", Toast.LENGTH_SHORT).show();
-            new Thread(() -> {
-              try {
-                float[] denoised = com.grinya.voicesampleprep.util.Denoiser.denoiseStereo(range);
-                runOnUiThread(() -> {
-                  clip.insert(denoised, start, start, end);
-                  refreshAfterChange();
-                  Toast.makeText(this, "Denoise готов", Toast.LENGTH_SHORT).show();
-                });
-              } catch (Throwable e) {
-                runOnUiThread(() -> Toast
-                    .makeText(this, "Ошибка Denoise: " + e.getMessage(), Toast.LENGTH_LONG).show());
-              }
-            }).start();
-            return true;
-          case 2: // Auto-Trim
-            showAutoTrimDialog();
-            return true;
-          case 3: // Channels
-            boolean l = applyL();
-            boolean r = applyR();
-            if (l && r) {
-              if (wave.hasSelection())
-                clip.swapChannels(wave.getSelStart(), wave.getSelEnd());
-              else
-                clip.swapChannels(0, clip.frameCount());
-              Toast.makeText(this, "L ↔ R", Toast.LENGTH_SHORT).show();
-            } else if (l) {
-              if (wave.hasSelection())
-                clip.copyRtoL(wave.getSelStart(), wave.getSelEnd());
-              else
-                clip.copyRtoL(0, clip.frameCount());
-              Toast.makeText(this, "R → L", Toast.LENGTH_SHORT).show();
-            } else if (r) {
-              if (wave.hasSelection())
-                clip.copyLtoR(wave.getSelStart(), wave.getSelEnd());
-              else
-                clip.copyLtoR(0, clip.frameCount());
-              Toast.makeText(this, "L → R", Toast.LENGTH_SHORT).show();
-            }
-            refreshAfterChange();
-            return true;
-          case 4: // Insert
-            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            i.addCategory(Intent.CATEGORY_OPENABLE);
-            i.setType("*/*");
-            i.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "audio/wav", "audio/x-wav",
-                "audio/mpeg", "audio/mp4", "audio/aac", "audio/flac", "audio/x-flac", "audio/*" });
-            startActivityForResult(i, REQ_INSERT);
-            return true;
-          case 5: // Silence
-            if (!requireSelection())
-              return true;
-            clip.silence(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
-            refreshAfterChange();
-            return true;
-          case 6: // Gain
-            showGainDialog();
-            return true;
-          case 7: // Normalize
-            showNormalizeDialog();
-            return true;
-          case 8: // Fade In
-            showFadeDialog(true);
-            return true;
-          case 9: // Fade Out
-            showFadeDialog(false);
-            return true;
-          case 10: // Reverse
-            if (wave.hasSelection())
-              clip.reverseRange(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
-            else
-              clip.reverse(applyL(), applyR());
-            refreshAfterChange();
-            return true;
-          case 11: // Invert
-            if (wave.hasSelection())
-              clip.invertPhase(wave.getSelStart(), wave.getSelEnd(), applyL(), applyR());
-            else
-              clip.invertPhase(0, clip.frameCount(), applyL(), applyR());
-            refreshAfterChange();
-            return true;
-          case 12: // To Mono
-            if (wave.hasSelection())
-              clip.mixToMonoRange(wave.getSelStart(), wave.getSelEnd());
-            else
-              clip.mixToMonoRange(0, clip.frameCount());
-            refreshAfterChange();
-            return true;
-          case 13: // High-Pass
-            showHighPassDialog();
-            return true;
-        }
-        return false;
+        executeActionByName(actionName);
+        return true;
       });
       popup.show();
     });
+
     findViewById(R.id.btnMarker).setOnClickListener(v -> {
       if (wave.hasSelection()) {
         clip.addMarker(wave.getSelStart());
@@ -459,6 +388,7 @@ public class EditActivity extends AppCompatActivity
         clip.addMarker(f);
       }
       wave.updateMarkers(clip.markers);
+      wave.updateExportIntervals(clip.exportIntervals);
       isChanged = true;
     });
 
@@ -467,6 +397,7 @@ public class EditActivity extends AppCompatActivity
       return true;
     });
   }
+
   // ---------- диалоги ----------
 
   private void showGainDialog() {
@@ -562,20 +493,19 @@ public class EditActivity extends AppCompatActivity
   }
 
   private void refreshAfterChange() {
-    isChanged = true; // Помечаем, что были изменения
+    isChanged = true;
     boolean wasPlaying = player.isPlaying();
     if (wasPlaying)
       player.pause();
 
     player.setPcm(clip.pcm);
     wave.updatePcm(clip.pcm);
-    // wave.clearSelection(); // снятие выделения
 
-    // после удаления позиция playhead могла выйти за пределы
     int f = Math.min(player.getCurrentFrame(), clip.frameCount());
     wave.setPlayheadFrame(f);
     updateTimeLabel();
     wave.updateMarkers(clip.markers);
+    wave.updateExportIntervals(clip.exportIntervals);
   }
 
   private void updateTimeLabel() {
@@ -731,7 +661,7 @@ public class EditActivity extends AppCompatActivity
     if (pendingStartMarker == frame) {
       pendingStartMarker = -1;
       Toast.makeText(this, "Соединение отменено", Toast.LENGTH_SHORT).show();
-      isChanged = true; 
+      isChanged = true;
       return;
     }
 
@@ -882,7 +812,7 @@ public class EditActivity extends AppCompatActivity
   private void showAutoTrimDialog() {
     EditText input = new EditText(this);
     input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-    input.setText("0.001"); // Порог по умолчанию
+    input.setText("0.001");
     input.setHint("Порог амплитуды (0..1)");
 
     new AlertDialog.Builder(this).setTitle("Auto-Trim (порог тишины)")
@@ -992,6 +922,53 @@ public class EditActivity extends AppCompatActivity
       wave.setIntervalsEditMode(true);
       // Опционально: можно показать тост "Режим интервалов"
     }
+  }
+
+  private void runDenoise() {
+    if (clip.pcm == null || clip.pcm.length == 0)
+      return;
+    int start = wave.hasSelection() ? wave.getSelStart() : 0;
+    int end = wave.hasSelection() ? wave.getSelEnd() : clip.frameCount();
+    float[] range = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, start, end);
+    Toast.makeText(this, "Обработка Denoise...", Toast.LENGTH_SHORT).show();
+    new Thread(() -> {
+      try {
+        float[] denoised = com.grinya.voicesampleprep.util.Denoiser.denoiseStereo(range);
+        runOnUiThread(() -> {
+          clip.insert(denoised, start, start, end);
+          refreshAfterChange();
+          Toast.makeText(this, "Denoise готов", Toast.LENGTH_SHORT).show();
+        });
+      } catch (Throwable e) {
+        runOnUiThread(() -> Toast
+            .makeText(this, "Ошибка Denoise: " + e.getMessage(), Toast.LENGTH_LONG).show());
+      }
+    }).start();
+  }
+
+  private void runChannels() {
+    boolean l = applyL();
+    boolean r = applyR();
+    if (l && r) {
+      if (wave.hasSelection())
+        clip.swapChannels(wave.getSelStart(), wave.getSelEnd());
+      else
+        clip.swapChannels(0, clip.frameCount());
+      Toast.makeText(this, "L ↔ R", Toast.LENGTH_SHORT).show();
+    } else if (l) {
+      if (wave.hasSelection())
+        clip.copyRtoL(wave.getSelStart(), wave.getSelEnd());
+      else
+        clip.copyRtoL(0, clip.frameCount());
+      Toast.makeText(this, "R → L", Toast.LENGTH_SHORT).show();
+    } else if (r) {
+      if (wave.hasSelection())
+        clip.copyLtoR(wave.getSelStart(), wave.getSelEnd());
+      else
+        clip.copyLtoR(0, clip.frameCount());
+      Toast.makeText(this, "L → R", Toast.LENGTH_SHORT).show();
+    }
+    refreshAfterChange();
   }
 
 }
