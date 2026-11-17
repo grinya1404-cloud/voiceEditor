@@ -21,6 +21,7 @@ import java.util.List;
 import android.widget.Button;
 import com.grinya.voicesampleprep.util.ExportUtils;
 import android.view.View;
+import com.grinya.voicesampleprep.model.ExportSettings;
 
 public class ExportActivity extends AppCompatActivity {
 
@@ -286,20 +287,6 @@ public class ExportActivity extends AppCompatActivity {
     }).start();
   }
 
-  // --- Вспомогательный класс для настроек ---
-  private static class ExportSettings {
-    boolean byMarkers;
-    int bits;
-    int rate;
-    boolean stereoMono;
-    boolean trueMono;
-    boolean normalize;
-    boolean fade;
-    boolean trimSilence;
-    boolean denoise;
-    String nameTemplate;
-  }
-
   private ExportSettings readSettings() {
     ExportSettings s = new ExportSettings();
     s.byMarkers = ((RadioButton) findViewById(R.id.rbByMarkers)).isChecked();
@@ -310,12 +297,14 @@ public class ExportActivity extends AppCompatActivity {
     s.normalize = ((CheckBox) findViewById(R.id.cbNormalize)).isChecked();
     s.fade = ((CheckBox) findViewById(R.id.cbFade)).isChecked();
     s.trimSilence = ((CheckBox) findViewById(R.id.cbTrimSilence)).isChecked();
-    // Если добавишь чекбокс Denoise:
-    s.denoise = findViewById(R.id.cbDenoise) != null
-        && ((CheckBox) findViewById(R.id.cbDenoise)).isChecked();
+
+    // D2: один findViewById
+    CheckBox cbDenoise = findViewById(R.id.cbDenoise);
+    s.denoise = cbDenoise != null && cbDenoise.isChecked();
 
     String raw = ((EditText) findViewById(R.id.edName)).getText().toString().trim();
     s.nameTemplate = raw.isEmpty() ? "{name}_{index}" : raw;
+    s.onlySelection = false; // не используется в ExportActivity, но поле есть в модели
     return s;
   }
 
@@ -389,15 +378,16 @@ public class ExportActivity extends AppCompatActivity {
       return null;
     }
   }
-  
+
   private void deleteCreated(Uri fileUri) {
-  try {
-    androidx.documentfile.provider.DocumentFile f =
-        androidx.documentfile.provider.DocumentFile.fromSingleUri(this, fileUri);
-    if (f != null) f.delete();
-  } catch (Exception ignored) {
+    try {
+      androidx.documentfile.provider.DocumentFile f = androidx.documentfile.provider.DocumentFile
+          .fromSingleUri(this, fileUri);
+      if (f != null)
+        f.delete();
+    } catch (Exception ignored) {
+    }
   }
-}
 
   private static String buildName(String template, String base, int index) {
     String out = template.replace("{name}", base).replace("{index}",

@@ -87,11 +87,22 @@ public class AudioPlayer {
   }
 
   public void setPcm(float[] pcm) {
-    pause();
+    // Останавливаем воспроизведение, но НЕ через pause() —
+    // pause() пересчитывает currentFrame от старых playStart*, что даёт «уехавшую» позицию.
+    playing = false;
+    playGeneration++;
+    ui.removeCallbacks(positionTick);
+
     this.pcm = pcm;
     this.totalFrames = (pcm == null) ? 0 : pcm.length / CHANNELS;
     this.currentFrame = 0;
     this.endFrame = totalFrames;
+    this.playStartFrame = 0;
+    this.playStartTimeMs = System.currentTimeMillis();
+    this.streamStartFrame = 0;
+    this.lastTimestampFrame = 0;
+    this.lastTimestampNanos = 0;
+    this.hasValidTimestamp = false;
   }
 
   public void setChannelMask(boolean left, boolean right) {

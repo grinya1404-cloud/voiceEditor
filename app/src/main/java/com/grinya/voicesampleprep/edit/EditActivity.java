@@ -494,6 +494,10 @@ public class EditActivity extends AppCompatActivity
 
   private void refreshAfterChange() {
     isChanged = true;
+
+    // Запоминаем позицию ДО setPcm, чтобы вернуть её после (в пределах нового размера)
+    int prevFrame = player.getCurrentFrame();
+
     boolean wasPlaying = player.isPlaying();
     if (wasPlaying)
       player.pause();
@@ -501,7 +505,8 @@ public class EditActivity extends AppCompatActivity
     player.setPcm(clip.pcm);
     wave.updatePcm(clip.pcm);
 
-    int f = Math.min(player.getCurrentFrame(), clip.frameCount());
+    int f = Math.max(0, Math.min(prevFrame, clip.frameCount()));
+    player.seekToFrame(f);
     wave.setPlayheadFrame(f);
     updateTimeLabel();
     wave.updateMarkers(clip.markers);
@@ -594,6 +599,10 @@ public class EditActivity extends AppCompatActivity
     super.onPause();
     if (player != null && player.isPlaying())
       player.pause();
+    if (pendingStartMarker != -1) {
+      pendingStartMarker = -1;
+      Toast.makeText(this, "Соединение маркеров отменено", Toast.LENGTH_SHORT).show();
+    }
   }
 
   @Override
@@ -645,6 +654,10 @@ public class EditActivity extends AppCompatActivity
     super.onDestroy();
     if (player != null)
       player.release();
+    pendingStartMarker = -1;
+    if (EditActivityHolder.current == clip) {
+      EditActivityHolder.clear();
+    }
   }
 
   @Override
@@ -760,7 +773,10 @@ public class EditActivity extends AppCompatActivity
           updateTimeLabel();
         }).setNegativeButton("Удалить все", (d, w) -> {
           clip.clearMarkers();
+          clip.clearExportIntervals(); // <-- чистим висячие интервалы
           wave.updateMarkers(clip.markers);
+          wave.updateExportIntervals(clip.exportIntervals);
+          isChanged = true;
         }).setNeutralButton("Закрыть", null).show();
   }
 
@@ -788,13 +804,6 @@ public class EditActivity extends AppCompatActivity
     } else {
       finish();
     }
-  }
-
-  @Override
-  public void onBackPressed() {
-    // времянка удалить
-    android.util.Log.d("EXIT", "onBackPressed, isChanged=" + isChanged);
-    confirmExit();
   }
 
   @Override
