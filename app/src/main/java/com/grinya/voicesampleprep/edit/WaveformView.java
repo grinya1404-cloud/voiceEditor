@@ -95,6 +95,8 @@ public class WaveformView extends View {
   private final Paint pScaleBg = new Paint();
   private final Paint pEmpty = new Paint();
   private final Path wavePath = new Path();
+
+  // B2: поля для интервалов и чекбоксов (без new Paint в onDraw)
   private final Paint pIntervalFillNormal = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final Paint pCheckboxBgOn = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final Paint pCheckboxBgOff = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -116,7 +118,7 @@ public class WaveformView extends View {
   private int downSelStart, downSelEnd;
   private boolean longPressActivated = false;
   private int downMarkerFrame = -1;
-  private boolean zeroCrossingSnap = true; // включён по умолчанию
+  private boolean zeroCrossingSnap = true;
 
   // Шкала амплитуды
   private final Paint pAmpScale = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -127,7 +129,7 @@ public class WaveformView extends View {
   private boolean intervalsEditMode = false;
   private int intervalPage = 0;
   private int intervalPageSize = 6;
-  private int selectedIntervalIndex = -1; // индекс выбранного интервала (для обводки)
+  private int selectedIntervalIndex = -1;
   private final Paint pIntervalFill = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final Paint pIntervalStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
   private final Paint pIntervalText = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -136,9 +138,6 @@ public class WaveformView extends View {
   private int lastWaveWidth = 0;
   private int downIntervalStart = -1;
   private int downIntervalEnd = -1;
-
-  private float[] peakMaxMono; // max(L,R) по пикселям
-  private float[] peakMinMono; // min(L,R) по пикселям
 
   private final Runnable longPressRunnable = new Runnable() {
     @Override
@@ -182,6 +181,9 @@ public class WaveformView extends View {
   private float[] peakMax;
   private float[] peakMinR;
   private float[] peakMaxR;
+  // B3: объединённые каналы (для не-стерео режима)
+  private float[] peakMaxMono;
+  private float[] peakMinMono;
   private int peakCacheWidth = 0;
   private double peakCacheStart = 0;
   private double peakCacheFpp = 0;
@@ -208,13 +210,13 @@ public class WaveformView extends View {
     markerFlagW = (int) (MARKER_FLAG_W_DP * density);
     markerFlagH = (int) (MARKER_FLAG_H_DP * density);
     checkSize = (int) (32 * density);
-    paddingPx = (int) (25 * density); // Отступ по 40dp с каждой стороны
+    paddingPx = (int) (25 * density); // Отступ по 25dp с каждой стороны
 
     pWave.setColor(colorWave);
     pWave.setStrokeWidth(1.5f);
     pWave.setStyle(Paint.Style.STROKE);
 
-    pWaveFill.setColor(0x55FFFFFF); // белый с прозрачностью 33% (или другой оттенок)
+    pWaveFill.setColor(0x55FFFFFF);
     pWaveFill.setStyle(Paint.Style.FILL);
 
     pCenter.setColor(colorCenterLine);
@@ -242,22 +244,23 @@ public class WaveformView extends View {
     pGrid.setColor(colorGrid);
     pGrid.setStrokeWidth(1f);
 
-    pEmpty.setColor(0xAA000000); // Полупрозрачный черный
+    pEmpty.setColor(0xAA000000);
     pEmpty.setStyle(Paint.Style.FILL);
 
-    pIntervalFill.setColor(0x884FC3F7); // Полупрозрачный голубой
+    pIntervalFill.setColor(0x884FC3F7);
     pIntervalFill.setStyle(Paint.Style.FILL);
-
-    pIntervalStroke.setColor(0xFFFFB300); // Янтарная обводка (для выбранного)
-    pIntervalStroke.setStrokeWidth(2f * density);
-    pIntervalStroke.setStyle(Paint.Style.STROKE);
-
-    pIntervalText.setColor(0xFF0E0E10); // Тёмный текст
-    pIntervalText.setTextSize(11f * density);
 
     pIntervalFillNormal.setColor(0x884FC3F7);
     pIntervalFillNormal.setStyle(Paint.Style.FILL);
 
+    pIntervalStroke.setColor(0xFFFFB300);
+    pIntervalStroke.setStrokeWidth(2f * density);
+    pIntervalStroke.setStyle(Paint.Style.STROKE);
+
+    pIntervalText.setColor(0xFF0E0E10);
+    pIntervalText.setTextSize(11f * density);
+
+    // B2: чекбоксы — без new Paint в onDraw
     pCheckboxBgOn.setColor(0xAAFFB300);
     pCheckboxBgOn.setStyle(Paint.Style.FILL);
 
@@ -274,15 +277,15 @@ public class WaveformView extends View {
 
     // Шкала амплитуды
     float density2 = c.getResources().getDisplayMetrics().density;
-    ampScaleWidthPx = (int) (32 * density2); // ширина шкалы ~32dp
-    pAmpScale.setColor(0xFF808080); // серый
+    ampScaleWidthPx = (int) (32 * density2);
+    pAmpScale.setColor(0xFF808080);
     pAmpScale.setStrokeWidth(1f);
     pAmpText.setColor(0xFF808080);
     pAmpText.setTextSize(9f * density2);
-    pHGrid.setColor(0x22FFFFFF); // очень прозрачный белый
+    pHGrid.setColor(0x22FFFFFF);
     pHGrid.setStrokeWidth(1f);
 
-    pScaleBg.setColor(0xAA0E0E10); // тёмный полупрозрачный фон
+    pScaleBg.setColor(0xAA0E0E10);
     pScaleBg.setStyle(Paint.Style.FILL);
 
     pRuler.setColor(colorRuler);
@@ -294,11 +297,10 @@ public class WaveformView extends View {
     pCheck.setColor(colorCheck);
     pCheck.setStyle(Paint.Style.FILL);
 
-    // pCheckBg.setColor(0xCC1A1A1E);
-    pCheckBg.setColor(0xAA1A1A1E); // 66% непрозрачности вместо 80%
+    pCheckBg.setColor(0xAA1A1A1E);
     pCheckBg.setStyle(Paint.Style.FILL);
 
-    pChannelText.setColor(0xFF0E0E10); // Тёмный цвет (под цвет фона)
+    pChannelText.setColor(0xFF0E0E10);
     pChannelText.setTextSize(16f * density);
     pChannelText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
 
@@ -459,7 +461,7 @@ public class WaveformView extends View {
   }
 
   public void zoomToFit() {
-    int w = getWidth() - 2 * paddingPx; // Учитываем отступы
+    int w = getWidth() - 2 * paddingPx;
     if (w <= 0 || totalFrames <= 0)
       return;
     viewStartFrame = 0;
@@ -533,8 +535,7 @@ public class WaveformView extends View {
     downSelStart = selStart;
     downSelEnd = selEnd;
 
-    // 0. Проверка тапа по интервалам (всегда, независимо от режима)
-    // 0. Проверка тапа по интервалам (всегда, независимо от режима)
+    // 0. Проверка тапа по интервалам
     if (exportIntervals != null && !exportIntervals.isEmpty()) {
       float[] layout = calcStripLayout();
       float startY = layout[0];
@@ -544,35 +545,29 @@ public class WaveformView extends View {
       int endIdx = (int) layout[4];
 
       if (count > 0) {
-        float stepY = stripH + 8f; // Шаг между полосками
-        // Зона тапа: половина шага вверх и вниз от полоски
-        // (в тонком режиме stepY = 16f, зона = 16f — касается соседних)
+        float stepY = stripH + 8f;
         float tapAbove = stepY / 2f;
         float tapBelow = stepY / 2f;
 
+        int waveW = getWidth() - 2 * paddingPx;
         float offsetY = startY;
         for (int i = startIdx; i < endIdx; i++) {
           int[] interval = exportIntervals.get(i);
           float x1 = frameToX(interval[0]);
           float x2 = frameToX(interval[1]);
-          int waveW = getWidth() - 2 * paddingPx;
           float drawX1 = Math.max(0, x1) + paddingPx;
           float drawX2 = Math.min(waveW, x2) + paddingPx;
 
-          // Зона тапа: от offsetY - tapAbove до offsetY + stripH + tapBelow
           float tapTop = offsetY - tapAbove;
           float tapBottom = offsetY + stripH + tapBelow;
 
           if (e.getX() >= drawX1 && e.getX() <= drawX2 && e.getY() >= tapTop
               && e.getY() <= tapBottom) {
-            // Попали в полосу
             if (!intervalsEditMode) {
-              // Вход в режим
               setIntervalsEditMode(true);
               if (listener != null)
                 listener.onIntervalsModeChanged(true);
             } else {
-              // Уже в режиме — просто выделяем (не выходим)
               selectedIntervalIndex = i;
               invalidate();
             }
@@ -643,7 +638,6 @@ public class WaveformView extends View {
     boolean onPlayhead = Math.abs(e.getX() - playX) <= 20;
 
     if (downMarkerFrame != -1) {
-      // На маркере. Если playhead тоже здесь — даём возможность тащить.
       dragMode = onPlayhead ? DRAG_PLAYHEAD : DRAG_SCROLL;
       longPressActivated = false;
       postDelayed(longPressRunnable, 350);
@@ -666,7 +660,6 @@ public class WaveformView extends View {
     if (scaleDetector.isInProgress())
       return true;
 
-    // Отмена long-press при движении
     if (!longPressActivated && Math.abs(e.getX() - downX) + Math.abs(e.getY() - downY) > 12) {
       removeCallbacks(longPressRunnable);
       downIntervalStart = -1;
@@ -697,6 +690,9 @@ public class WaveformView extends View {
 
     if (dragMode == DRAG_SEL_START) {
       int f = xToFrame(e.getX());
+      int marker = nearestMarker(f, 15);
+      if (marker != -1)
+        f = marker;
       int newStart = Math.min(f, selEnd);
       int newEnd = Math.max(f, selEnd);
       if (newStart != selStart) {
@@ -710,6 +706,9 @@ public class WaveformView extends View {
 
     if (dragMode == DRAG_SEL_END) {
       int f = xToFrame(e.getX());
+      int marker = nearestMarker(f, 15);
+      if (marker != -1)
+        f = marker;
       int newStart = Math.min(selStart, f);
       int newEnd = Math.max(selStart, f);
       if (newEnd != selEnd) {
@@ -739,15 +738,20 @@ public class WaveformView extends View {
   private boolean handleActionUp(MotionEvent e) {
     removeCallbacks(longPressRunnable);
 
-    // Снап к нулю для выделения
-    if (zeroCrossingSnap && pcm != null && hasSelection()) {
-      int fStart = selStart;
-      int fEnd = selEnd;
-      if (fStart >= 0 && fStart < totalFrames) {
-        selStart = nearestZeroCross(fStart);
-      }
-      if (fEnd >= 0 && fEnd < totalFrames) {
-        selEnd = nearestZeroCross(fEnd);
+    // Снап к маркеру / нулю для выделения
+    if (hasSelection()) {
+      int mStart = nearestMarker(selStart, 15);
+      int mEnd = nearestMarker(selEnd, 15);
+      if (mStart != -1)
+        selStart = mStart;
+      if (mEnd != -1)
+        selEnd = mEnd;
+
+      if (zeroCrossingSnap && pcm != null) {
+        if (mStart == -1 && selStart >= 0 && selStart < totalFrames)
+          selStart = nearestZeroCross(selStart);
+        if (mEnd == -1 && selEnd >= 0 && selEnd < totalFrames)
+          selEnd = nearestZeroCross(selEnd);
       }
       if (selStart > selEnd) {
         int t = selStart;
@@ -758,9 +762,9 @@ public class WaveformView extends View {
       if (listener != null)
         listener.onSelectionChanged(selStart, selEnd);
     }
+
     // Выход из режима интервалов при повторном тапе по той же полосе
     if (intervalsEditMode && selectedIntervalIndex != -1 && !longPressActivated) {
-      // Проверяем, что тап был коротким (не движение)
       if (Math.abs(e.getX() - downX) < 8 && Math.abs(e.getY() - downY) < 8) {
         float[] layout = calcStripLayout();
         float startY = layout[0];
@@ -771,7 +775,6 @@ public class WaveformView extends View {
         float stepY = stripH + 8f;
 
         if (count > 0 && selectedIntervalIndex >= startIdx && selectedIntervalIndex < endIdx) {
-          // Смещение выбранной полосы внутри видимой страницы
           float offsetY = startY + (selectedIntervalIndex - startIdx) * stepY;
 
           int[] interval = exportIntervals.get(selectedIntervalIndex);
@@ -779,12 +782,10 @@ public class WaveformView extends View {
           float drawX1 = Math.max(0, frameToX(interval[0])) + paddingPx;
           float drawX2 = Math.min(waveW, frameToX(interval[1])) + paddingPx;
 
-          // Зона тапа: полоса целиком (от offsetY до offsetY + stripH) + запас stepY/2 сверху/снизу
           float tapTop = offsetY - stepY / 2f;
           float tapBottom = offsetY + stripH + stepY / 2f;
           if (e.getX() >= drawX1 && e.getX() <= drawX2 && e.getY() >= tapTop
               && e.getY() <= tapBottom) {
-            // Повторный тап по выбранной полосе — выход
             setIntervalsEditMode(false);
             if (listener != null)
               listener.onIntervalsModeChanged(false);
@@ -793,6 +794,7 @@ public class WaveformView extends View {
         }
       }
     }
+
     // Короткий тап (не долгий)
     if (e.getActionMasked() == MotionEvent.ACTION_UP && Math.abs(e.getX() - downX) < 8
         && Math.abs(e.getY() - downY) < 8 && e.getY() >= rulerHeightPx && !longPressActivated) {
@@ -819,7 +821,6 @@ public class WaveformView extends View {
   }
 
   private int xToFrame(float x) {
-    // Вычитаем paddingPx, так как волна сдвинута вправо
     double f = viewStartFrame + (x - paddingPx) * viewFramesPerPixel;
     return Math.max(0, Math.min(totalFrames, (int) Math.round(f)));
   }
@@ -840,10 +841,7 @@ public class WaveformView extends View {
 
     double visibleFrames = visibleWidth * viewFramesPerPixel;
 
-    // Левый предел: разрешаем уехать в пустоту на пол-экрана
     double minStart = -visibleFrames / 2.0;
-
-    // Правый предел: разрешаем уехать вправо на пол-экрана ЗА КОНЕЦ файла
     double baseMaxStart = Math.max(0, totalFrames - visibleFrames);
     double maxStart = baseMaxStart + (visibleFrames / 2.0);
 
@@ -864,7 +862,7 @@ public class WaveformView extends View {
     invalidatePeakCache();
   }
 
-  /** Пересчитать позиции чекбоксов L/R по текущему размеру вьюхи. */
+  /** B4: пересчитать позиции чекбоксов L/R по текущему размеру вьюхи. */
   private void updateCheckboxPositions(int w, int h) {
     int waveTop = rulerHeightPx;
     int waveH = h - waveTop;
@@ -910,8 +908,7 @@ public class WaveformView extends View {
       float minL = 0f, maxL = 0f;
       float minR = 0f, maxR = 0f;
 
-      // Адаптивный шаг: не больше 64 сэмплов на пиксель, но не меньше 1.
-      // Второй проход без шага убран — он делал O(N) на каждый пиксель.
+      // B1: адаптивный шаг, без второго полного прохода
       int span = f1 - f0;
       int step = Math.max(1, span / 64);
 
@@ -928,8 +925,7 @@ public class WaveformView extends View {
           maxR = r;
       }
 
-      // Гарантируем, что последний фрейм диапазона учтён
-      // (важно для хвоста, если span не кратен step).
+      // Гарантируем учёт последнего фрейма диапазона
       if (f1 > f0) {
         int last = f1 - 1;
         float l = pcm[last * 2];
@@ -948,6 +944,7 @@ public class WaveformView extends View {
       peakMax[x] = maxL;
       peakMinR[x] = minR;
       peakMaxR[x] = maxR;
+      // B3: объединённый канал для не-стерео
       peakMinMono[x] = Math.min(minL, minR);
       peakMaxMono[x] = Math.max(maxL, maxR);
     }
@@ -1088,12 +1085,12 @@ public class WaveformView extends View {
       drawIntervalsEditMode(canvas, waveWidth, waveTop, waveBottom);
     }
 
-    // 9. Playhead (красная и зелёная линии)
+    // 9. Playhead
     drawPlayheads(canvas, waveWidth, waveTop, waveBottom);
 
     canvas.restore();
 
-    // 10. Шкала амплитуды (вне сдвинутого canvas)
+    // 10. Шкала амплитуды
     drawAmpScale(canvas, w - ampScaleWidthPx, w, waveTop, waveBottom, waveH);
 
     // 11. Чекбоксы L/R
@@ -1146,6 +1143,7 @@ public class WaveformView extends View {
       drawCenterLine(canvas, centerY, waveWidth);
     } else {
       float halfH = waveH * 0.5f - 2;
+      // B3: готовые объединённые массивы, без new float[waveWidth]
       drawWaveChannel(canvas, peakMaxMono, peakMinMono, waveWidth, startX, endXInt, centerY, halfH);
       drawCenterLine(canvas, centerY, waveWidth);
     }
@@ -1190,7 +1188,6 @@ public class WaveformView extends View {
         continue;
       canvas.drawLine(x, waveTop, x, waveBottom, pMarker);
 
-      // Верхний флажок
       Path flag = new Path();
       flag.moveTo(x, waveTop + 2);
       flag.lineTo(x + markerFlagW, waveTop + 2);
@@ -1199,7 +1196,6 @@ public class WaveformView extends View {
       flag.close();
       canvas.drawPath(flag, pMarkerFill);
 
-      // Нижний флажок
       float botY = waveBottom - markerFlagH - 2;
       Path flag2 = new Path();
       flag2.moveTo(x, botY);
@@ -1228,17 +1224,14 @@ public class WaveformView extends View {
     if (!stereoView)
       return;
     if (checkLx == 0f && checkLy == 0f) {
-      // onSizeChanged ещё не вызывался (маловероятно) — пересчитываем на всякий случай
       updateCheckboxPositions(w, getHeight());
     }
 
-    // L (верхняя волна)
     drawCheckbox(canvas, checkLx, checkLy, channelL);
     pChannelText.setColor(channelL ? 0xFF0E0E10 : 0xFFE8E8EA);
     canvas.drawText("L", checkLx + checkSize / 2f - 10, checkLy + checkSize / 2f + 10,
         pChannelText);
 
-    // R (нижняя волна)
     drawCheckbox(canvas, checkRx, checkRy, channelR);
     pChannelText.setColor(channelR ? 0xFF0E0E10 : 0xFFE8E8EA);
     canvas.drawText("R", checkRx + checkSize / 2f - 10, checkRy + checkSize / 2f + 10,
@@ -1291,11 +1284,9 @@ public class WaveformView extends View {
         checked ? pCheckboxBorderOn : pCheckboxBorderOff);
   }
 
-  private void drawRuler(Canvas canvas, int w, int rulerH) {
-    if (sampleRate <= 0)
-      return;
+  /** B8: общий выбор шага сетки/линейки. */
+  private double chooseStep(double visibleSec) {
     double[] steps = { 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0 };
-    double visibleSec = w * viewFramesPerPixel / sampleRate;
     double step = steps[steps.length - 1];
     for (double s : steps) {
       if (visibleSec / s < 12) {
@@ -1303,12 +1294,19 @@ public class WaveformView extends View {
         break;
       }
     }
+    return step;
+  }
+
+  private void drawRuler(Canvas canvas, int w, int rulerH) {
+    if (sampleRate <= 0)
+      return;
+    double visibleSec = w * viewFramesPerPixel / sampleRate;
+    double step = chooseStep(visibleSec);
     double startSec = viewStartFrame / (double) sampleRate;
     double firstMark = Math.ceil(startSec / step) * step;
     double endSec = (viewStartFrame + w * viewFramesPerPixel) / (double) sampleRate;
 
     for (double t = firstMark; t <= endSec; t += step) {
-      // Пропускаем метки, которые находятся за пределами файла
       if (t < 0 || t * sampleRate > totalFrames)
         continue;
       float x = (float) (((t * sampleRate) - viewStartFrame) / viewFramesPerPixel);
@@ -1329,21 +1327,13 @@ public class WaveformView extends View {
   private void drawGrid(Canvas canvas, int w, int top, int bottom) {
     if (sampleRate <= 0)
       return;
-    double[] steps = { 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0 };
     double visibleSec = w * viewFramesPerPixel / sampleRate;
-    double step = steps[steps.length - 1];
-    for (double s : steps) {
-      if (visibleSec / s < 12) {
-        step = s;
-        break;
-      }
-    }
+    double step = chooseStep(visibleSec);
     double startSec = viewStartFrame / (double) sampleRate;
     double firstMark = Math.ceil(startSec / step) * step;
     double endSec = (viewStartFrame + w * viewFramesPerPixel) / (double) sampleRate;
 
     for (double t = firstMark; t <= endSec; t += step) {
-      // Пропускаем метки, которые находятся за пределами файла
       if (t < 0 || t * sampleRate > totalFrames)
         continue;
       float x = (float) (((t * sampleRate) - viewStartFrame) / viewFramesPerPixel);
@@ -1361,31 +1351,17 @@ public class WaveformView extends View {
     canvas.drawLine(x, cyTop, x, cyBot, pSelBorder);
   }
 
-  /**
-   * Рисует горизонтальные линии уровня (0, -6, -12, -24, -48 dB) и подписи.
-   * 
-   * @param centerY центральная линия (0 амплитуды)
-   * @param halfH   половина высоты (где амплитуда = 1.0)
-   * @param top     верхняя граница области
-   * @param bottom  нижняя граница области
-   * @param x0      левый край
-   * @param x1      правый край
-   */
+  /** B9: без неиспользуемого labels. */
   private void drawHorizontalLevels(Canvas canvas, int centerY, float halfH, int top, int bottom,
       int x0, int x1) {
-    float[] levels = { 0f, 0.5f, 0.7f, 0.9f, 0.999f }; // амплитуды
-    String[] labels = { "-inf", "-6", "-3", "-1", "0" };
+    float[] levels = { 0f, 0.5f, 0.7f, 0.9f, 0.999f };
 
-    for (int i = 0; i < levels.length; i++) {
-      float amp = levels[i];
+    for (float amp : levels) {
       float dy = amp * halfH;
-
-      // Верхняя линия (положительная амплитуда)
       float yTop = centerY - dy;
       if (yTop >= top && yTop <= bottom) {
         canvas.drawLine(x0, yTop, x1, yTop, pHGrid);
       }
-      // Нижняя линия (отрицательная амплитуда)
       float yBot = centerY + dy;
       if (yBot >= top && yBot <= bottom) {
         canvas.drawLine(x0, yBot, x1, yBot, pHGrid);
@@ -1397,27 +1373,19 @@ public class WaveformView extends View {
     float zeroX = frameToX(0);
     float endX = frameToX(totalFrames);
 
-    // Если начало файла уехало за левый край (zeroX < 0),
-    // то видимая часть файла начинается с 0.
-    // Если начало файла правее 0 (zeroX > 0), то линия должна начинаться с zeroX.
     float startDraw = Math.max(0, zeroX);
     float endDraw = Math.min(waveWidth, endX);
-    android.util.Log.d("WAVE", "drawCenterLine: zeroX=" + zeroX + " endX=" + endX + " startDraw="
-        + startDraw + " endDraw=" + endDraw);
-    // Дополнительная проверка: если startDraw > endDraw, значит, файла вообще не видно
     if (startDraw < endDraw) {
       canvas.drawLine(startDraw, centerY, endDraw, centerY, pCenter);
     }
   }
 
   private void drawAmpScale(Canvas canvas, int scaleX, int w, int top, int bottom, int waveH) {
-    // Фон шкалы
     canvas.drawRect(scaleX, top, w, bottom, pScaleBg);
 
     int centerY = (top + bottom) / 2;
     float halfH = waveH * 0.5f - 2;
 
-    // Для стерео — две половины
     if (stereoView) {
       drawScaleHalf(canvas, scaleX, w, top, top + waveH / 2, waveH * 0.25f - 2);
       drawScaleHalf(canvas, scaleX, w, top + waveH / 2, bottom, waveH * 0.25f - 2);
@@ -1510,14 +1478,13 @@ public class WaveformView extends View {
       float drawX1 = Math.max(0, x1);
       float drawX2 = Math.min(waveWidth, x2);
 
-      android.graphics.RectF rect = new android.graphics.RectF(drawX1, offsetY, drawX2,
-          offsetY + stripH);
+      tmpRect.set(drawX1, offsetY, drawX2, offsetY + stripH);
 
       if (i == selectedIntervalIndex) {
-        canvas.drawRoundRect(rect, 6, 6, pIntervalFill);
-        canvas.drawRoundRect(rect, 6, 6, pIntervalStroke);
+        canvas.drawRoundRect(tmpRect, 6, 6, pIntervalFill);
+        canvas.drawRoundRect(tmpRect, 6, 6, pIntervalStroke);
       } else {
-        canvas.drawRoundRect(rect, 6, 6, pIntervalFill);
+        canvas.drawRoundRect(tmpRect, 6, 6, pIntervalFill);
       }
 
       String label = (i + 1) + ": " + formatMsForStrip(interval[0]) + " – "
@@ -1536,7 +1503,7 @@ public class WaveformView extends View {
   }
 
   /**
-   * Вычисляет раскладку полос интервалов. Возвращает массив: [startY, stripH, count, startIdx, endIdx]. Не зависит от состояния onDraw — можно вызывать в любой момент.
+   * B5: раскладка полос интервалов без зависимости от onDraw. Возвращает [startY, stripH, count, startIdx, endIdx].
    */
   private float[] calcStripLayout() {
     int startIdx = intervalPage * intervalPageSize;
@@ -1546,7 +1513,6 @@ public class WaveformView extends View {
     int waveTop = rulerHeightPx;
     int waveH = getHeight() - waveTop;
     if (waveH <= 0) {
-      // Вьюха ещё не измерена — вернуть пустую раскладку
       return new float[] { 0f, 8f, 0, startIdx, endIdx };
     }
 
@@ -1564,5 +1530,4 @@ public class WaveformView extends View {
 
     return new float[] { startY, stripH, count, startIdx, endIdx };
   }
-
 }

@@ -5,7 +5,7 @@ import android.content.Context;
 import com.grinya.voicesampleprep.audio.AudioDecoder;
 import com.grinya.voicesampleprep.audio.WavReader;
 import com.grinya.voicesampleprep.audio.WavWriter;
-import com.grinya.voicesampleprep.model.AudioMeta;
+import com.grinya.voicesampleprep.util.FileNames;
 
 import java.io.File;
 import java.io.IOException;
@@ -15,12 +15,11 @@ import java.util.List;
 
 public class BankManager {
 
-  private final Context appContext;
   private final File banksRoot;
 
   public BankManager(Context c) {
-    this.appContext = c.getApplicationContext();
-    this.banksRoot = new File(appContext.getExternalFilesDir(null), "banks");
+    File external = c.getApplicationContext().getExternalFilesDir(null);
+    this.banksRoot = new File(external, "banks");
     if (!banksRoot.exists())
       banksRoot.mkdirs();
   }
@@ -29,7 +28,7 @@ public class BankManager {
     return banksRoot;
   }
 
-  /** Список банков (папок первого уровня). */
+  /** Список банков (папок первого уровня). E1: читает .meta для SR/каналов/битности. */
   public List<Bank> listBanks() {
     List<Bank> result = new ArrayList<>();
     File[] dirs = banksRoot.listFiles(File::isDirectory);
@@ -44,7 +43,9 @@ public class BankManager {
       if (files != null) {
         Arrays.sort(files, (a, c) -> a.getName().compareToIgnoreCase(c.getName()));
         for (File f : files) {
-          AudioClip clip = new AudioClip(f.getName(), new float[0], AudioClip.SAMPLE_RATE);
+          AudioMeta meta = AudioMeta.load(f);
+          int sr = meta.sampleRate > 0 ? meta.sampleRate : AudioClip.SAMPLE_RATE;
+          AudioClip clip = new AudioClip(f.getName(), new float[0], sr);
           clip.dir = f;
           b.clips.add(clip);
         }
@@ -54,6 +55,10 @@ public class BankManager {
     return result;
   }
 
+  /**
+   * E2: если банк с таким именем уже есть — возвращаем его (не создаём дубль).
+   * Если имя пустое/невалидное — sanitize → "untitled".
+   */
   public Bank createBank(String name) {
     String safe = sanitize(name);
     File dir = new File(banksRoot, safe);
@@ -65,10 +70,13 @@ public class BankManager {
     return b;
   }
 
-  public Bank deleteBank(Bank b) {
-    if (b.dir != null)
-      deleteRecursive(b.dir);
-    return b;
+  /** E3: возвращает true, если папка удалена (или уже не существует). */
+  public boolean deleteBank(Bank b) {
+    if (b == null || b.dir == null)
+      return false;
+    if (!b.dir.exists())
+      return true;
+    return deleteRecursive(b.dir);
   }
 
   /** Сохранить клип в банк как WAV (16-bit, 48к, stereo). Возвращает файл. */
@@ -91,7 +99,6 @@ public class BankManager {
     AudioClip c = new AudioClip(wavFile.getName(), r.pcm, r.sampleRate);
     c.dir = wavFile;
 
-    // Автоматически подтягиваем метаданные
     AudioMeta meta = AudioMeta.load(wavFile);
     c.markers = meta.markers;
     c.exportIntervals = meta.exportIntervals;
@@ -115,8 +122,7 @@ public class BankManager {
     }
     WavWriter.write(out, r.pcm, r.sampleRate, r.sampleRate, 16, false, false, false, false, false);
 
-    // Сохраняем .meta с параметрами исходника
-    // Сохраняем .meta с ПАРАМЕТРАМИ ИСХОДНИКА (до конвертации)
+    // Сохраняем .meta с параметрами ИСХОДНИКА (до конвертации)
     AudioMeta meta = new AudioMeta();
     meta.sampleRate = r.originalSampleRate;
     meta.channels = r.originalChannels;
@@ -130,18 +136,20 @@ public class BankManager {
   }
 
   private static String sanitize(String name) {
-    if (name == null || name.trim().isEmpty())
-      name = "untitled";
-    return name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+    return FileNames.sanitize(name);
   }
 
-  private static void deleteRecursive(File f) {
+  /** E3: рекурсивное удаление с проверкой результата. */
+  private static boolean deleteRecursive(File f) {
+    boolean ok = true;
     if (f.isDirectory()) {
       File[] kids = f.listFiles();
-      if (kids != null)
+      if (kids != null) {
         for (File k : kids)
-          deleteRecursive(k);
+          ok &= deleteRecursive(k);
+      }
     }
-    f.delete();
+    ok &= f.delete();
+    return ok;
   }
 }

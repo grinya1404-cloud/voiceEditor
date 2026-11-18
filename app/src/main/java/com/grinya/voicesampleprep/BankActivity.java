@@ -16,12 +16,12 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.grinya.voicesampleprep.audio.WavReader;
 import com.grinya.voicesampleprep.edit.EditActivity;
 import com.grinya.voicesampleprep.edit.EditActivityHolder;
 import com.grinya.voicesampleprep.model.AudioClip;
 import com.grinya.voicesampleprep.model.Bank;
 import com.grinya.voicesampleprep.model.BankManager;
+import com.grinya.voicesampleprep.util.FileNames;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -89,9 +89,21 @@ public class BankActivity extends AppCompatActivity {
     reload();
   }
 
+  /** E7: если банк удалён/переименован — finish(), а не держим устаревший объект. */
   private void reload() {
-    currentBank = bankManager.listBanks().stream().filter(b -> b.name.equals(currentBank.name))
-        .findFirst().orElse(currentBank);
+    List<Bank> banks = bankManager.listBanks();
+    Bank found = null;
+    for (Bank b : banks) {
+      if (b.name.equals(currentBank.name)) {
+        found = b;
+        break;
+      }
+    }
+    if (found == null) {
+      finish();
+      return;
+    }
+    currentBank = found;
     adapter.setData(currentBank.clips);
     txtEmpty.setVisibility(currentBank.clips.isEmpty() ? View.VISIBLE : View.GONE);
   }
@@ -120,7 +132,8 @@ public class BankActivity extends AppCompatActivity {
     }).start();
   }
 
-  private void copyFile(File src, File dst) throws Exception {
+  /** E12: только IOException. */
+  private void copyFile(File src, File dst) throws java.io.IOException {
     try (java.io.FileInputStream in = new java.io.FileInputStream(src);
         java.io.FileOutputStream out = new java.io.FileOutputStream(dst)) {
       byte[] buf = new byte[8192];
@@ -131,6 +144,7 @@ public class BankActivity extends AppCompatActivity {
     }
   }
 
+  /** E8: обновляет clip.dir/clip.name, если открыт в редакторе. */
   private void renameClip(AudioClip clip) {
     EditText input = new EditText(this);
     String nameOnly = clip.name.endsWith(".wav") ? clip.name.substring(0, clip.name.length() - 4)
@@ -144,7 +158,7 @@ public class BankActivity extends AppCompatActivity {
           if (newName.isEmpty() || clip.dir == null)
             return;
 
-          String safe = newName.replaceAll("[\\\\/:*?\"<>|]", "_");
+          String safe = FileNames.sanitize(newName);
           File newFile = new File(clip.dir.getParent(), safe + ".wav");
 
           if (newFile.exists()) {
@@ -157,6 +171,15 @@ public class BankActivity extends AppCompatActivity {
             File newMeta = new File(newFile.getAbsolutePath() + ".meta");
             if (oldMeta.exists())
               oldMeta.renameTo(newMeta);
+
+            // E8: если этот клип открыт в редакторе — обновить путь/имя
+            if (EditActivityHolder.current != null && EditActivityHolder.current.dir != null
+                && EditActivityHolder.current.dir.equals(clip.dir)) {
+              EditActivityHolder.current.dir = newFile;
+              EditActivityHolder.current.name = newFile.getName();
+            }
+            clip.dir = newFile;
+            clip.name = newFile.getName();
             reload();
           } else {
             Toast.makeText(this, "Ошибка переименования", Toast.LENGTH_SHORT).show();
@@ -212,7 +235,6 @@ public class BankActivity extends AppCompatActivity {
 
           String newName = baseName;
           if (isSameBank) {
-            // Если копируем в тот же банк, генерируем новое имя
             int counter = 1;
             File testFile = new File(targetBank.dir, newName + "_copy.wav");
             while (testFile.exists()) {
@@ -225,7 +247,6 @@ public class BankActivity extends AppCompatActivity {
           File dstWav = new File(targetBank.dir, newName + ".wav");
           File dstMeta = new File(targetBank.dir, newName + ".wav.meta");
 
-          // Если в целевом банке уже есть файл с таким именем (при копировании в другой банк)
           if (!isSameBank && dstWav.exists()) {
             int counter = 1;
             File testFile = new File(targetBank.dir, baseName + "_" + counter + ".wav");
@@ -244,7 +265,7 @@ public class BankActivity extends AppCompatActivity {
           final String finalName = dstWav.getName();
           runOnUiThread(() -> {
             Toast.makeText(this, "Скопировано: " + finalName, Toast.LENGTH_SHORT).show();
-            reload(); // Обновить список (если копировали в текущий банк)
+            reload();
           });
         } catch (Exception e) {
           runOnUiThread(
@@ -296,7 +317,75 @@ public class BankActivity extends AppCompatActivity {
       callback.onBankSelected(allBanks.get(which));
     }).setNegativeButton("Отмена", null).show();
   }
-  // ---------- adapter ----------
+
+  /** E6: проверка renameTo, E13: без ProgressDialog (простой Toast-прогресс). */
+  private void importFromUri(Uri uri) {
+    if (uri == null)
+      return;
+    android.util.Log.d("IMPORT", "Start import: " + uri);
+
+    Toast.makeText(this, "Импорт...", Toast.LENGTH_SHORT).show();
+
+    new Thread(() -> {
+      try {
+        File tmp = new File(getCacheDir(), "import_tmp");
+        try (InputStream in = getContentResolver().openInputStream(uri);
+            FileOutputStream out = new FileOutputStream(tmp)) {
+          byte[] buf = new byte[8192];
+          int n;
+          while ((n = in.read(buf)) > 0)
+            out.write(buf, 0, n);
+        }
+
+        String displayName = "imported";
+        android.database.Cursor c = getContentResolver().query(uri, null, null, null, null);
+        if (c != null) {
+          int idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+          if (c.moveToFirst() && idx >= 0)
+            displayName = c.getString(idx);
+          c.close();
+        }
+
+        // E6: уникальное имя, если уже существует
+        File renamed = new File(getCacheDir(), displayName);
+        if (renamed.exists()) {
+          String base = displayName;
+          String ext = "";
+          int dot = base.lastIndexOf('.');
+          if (dot > 0) {
+            ext = base.substring(dot);
+            base = base.substring(0, dot);
+          }
+          int counter = 1;
+          while (renamed.exists()) {
+            renamed = new File(getCacheDir(), base + "_" + counter + ext);
+            counter++;
+          }
+        }
+        if (!tmp.renameTo(renamed)) {
+          // renameTo не сработал — копируем
+          copyFile(tmp, renamed);
+          //noinspection ResultOfMethodCallIgnored
+          tmp.delete();
+        }
+
+        bankManager.importFile(currentBank, renamed);
+        //noinspection ResultOfMethodCallIgnored
+        renamed.delete();
+
+        runOnUiThread(() -> {
+          reload();
+          Toast.makeText(this, "Импортировано", Toast.LENGTH_SHORT).show();
+        });
+      } catch (Throwable e) {
+        android.util.Log.e("IMPORT", "Error", e);
+        runOnUiThread(() -> Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG)
+            .show());
+      }
+    }).start();
+  }
+  
+    // ---------- adapter ----------
 
   private class ClipAdapter extends RecyclerView.Adapter<ClipAdapter.VH> {
     private List<AudioClip> data = new java.util.ArrayList<>();
@@ -344,7 +433,6 @@ public class BankActivity extends AppCompatActivity {
             .show();
         return true;
       });
-
     }
 
     @Override
@@ -366,59 +454,4 @@ public class BankActivity extends AppCompatActivity {
   public interface BankPickerCallback {
     void onBankSelected(Bank bank);
   }
-
-  private void importFromUri(Uri uri) {
-    if (uri == null)
-      return;
-    android.util.Log.d("IMPORT", "Start import: " + uri);
-
-    android.app.ProgressDialog progress = new android.app.ProgressDialog(this);
-    progress.setMessage("Импорт...");
-    progress.setCancelable(false);
-    progress.show();
-
-    new Thread(() -> {
-      try {
-        android.util.Log.d("IMPORT", "Copying file...");
-        File tmp = new File(getCacheDir(), "import_tmp");
-        try (InputStream in = getContentResolver().openInputStream(uri);
-            FileOutputStream out = new FileOutputStream(tmp)) {
-          byte[] buf = new byte[8192];
-          int n;
-          while ((n = in.read(buf)) > 0)
-            out.write(buf, 0, n);
-        }
-        android.util.Log.d("IMPORT", "File copied, size=" + tmp.length());
-
-        String displayName = "imported";
-        android.database.Cursor c = getContentResolver().query(uri, null, null, null, null);
-        if (c != null) {
-          int idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
-          if (c.moveToFirst() && idx >= 0)
-            displayName = c.getString(idx);
-          c.close();
-        }
-        File renamed = new File(getCacheDir(), displayName);
-        tmp.renameTo(renamed);
-        android.util.Log.d("IMPORT", "Decoding: " + renamed.getName());
-
-        bankManager.importFile(currentBank, renamed);
-        android.util.Log.d("IMPORT", "Import success");
-        renamed.delete();
-
-        runOnUiThread(() -> {
-          progress.dismiss();
-          reload();
-          Toast.makeText(this, "Импортировано", Toast.LENGTH_SHORT).show();
-        });
-      } catch (Throwable e) {
-        android.util.Log.e("IMPORT", "Error", e);
-        runOnUiThread(() -> {
-          progress.dismiss();
-          Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show();
-        });
-      }
-    }).start();
-  }
-
 }

@@ -54,8 +54,6 @@ public class ExportUtils {
   }
 
   public static String sanitize(String s) {
-    if (s == null || s.trim().isEmpty())
-      return "clip";
-    return s.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+    return FileNames.sanitize(s);
   }
 }

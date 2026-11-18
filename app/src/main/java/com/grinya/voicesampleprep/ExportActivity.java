@@ -14,20 +14,20 @@ import com.grinya.voicesampleprep.audio.WavWriter;
 import com.grinya.voicesampleprep.model.AudioClip;
 import com.grinya.voicesampleprep.model.AudioMeta;
 import com.grinya.voicesampleprep.model.BankManager;
+import com.grinya.voicesampleprep.model.ExportSettings;
 import com.grinya.voicesampleprep.util.AudioOps;
+import com.grinya.voicesampleprep.util.ExportUtils;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import android.widget.Button;
-import com.grinya.voicesampleprep.util.ExportUtils;
 import android.view.View;
-import com.grinya.voicesampleprep.model.ExportSettings;
 
 public class ExportActivity extends AppCompatActivity {
 
   private static final int REQ_TREE = 3001;
 
-  private static java.util.List<com.grinya.voicesampleprep.model.AudioClip> bankClips;
+  private static java.util.List<AudioClip> bankClips;
   private static String bankName;
 
   private static AudioClip source;
@@ -38,7 +38,6 @@ public class ExportActivity extends AppCompatActivity {
   private boolean isOriginalMode = false;
   private final java.util.ArrayList<String> recentActions = new java.util.ArrayList<>();
 
-  // Принудительный интервал (из меню интервала)
   private static int forcedStart = -1;
   private static int forcedEnd = -1;
   private int forcedStartLocal = -1;
@@ -55,6 +54,12 @@ public class ExportActivity extends AppCompatActivity {
     selEnd = e;
   }
 
+  public static void setBankSource(java.util.List<AudioClip> clips, String name) {
+    bankClips = clips;
+    bankName = name;
+    source = null;
+  }
+
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
@@ -62,7 +67,7 @@ public class ExportActivity extends AppCompatActivity {
       finish();
       return;
     }
-    // Забираем принудительный интервал и обнуляем статику
+    // D10: забираем принудительный интервал и обнуляем статику
     forcedStartLocal = forcedStart;
     forcedEndLocal = forcedEnd;
     forcedStart = -1;
@@ -70,13 +75,11 @@ public class ExportActivity extends AppCompatActivity {
     setContentView(R.layout.activity_export);
 
     if (source != null) {
-      bankClips = null; // сбрасываем режим банка
-      // Загружаем .meta для умного экспорта
+      bankClips = null; // D5: сбрасываем режим банка
       originalMeta = AudioMeta.load(source.dir);
       if (forcedStartLocal != -1) {
         findViewById(R.id.rgMode).setVisibility(View.GONE);
       }
-      // Автоматически ставим рекомендуемые параметры
       if (originalMeta.channels == 1) {
         ((RadioButton) findViewById(R.id.rbTrueMono)).setChecked(true);
       } else if (originalMeta.channels == 2) {
@@ -93,7 +96,6 @@ public class ExportActivity extends AppCompatActivity {
         ((RadioButton) findViewById(R.id.rb16)).setChecked(true);
       }
 
-      // Показываем подсказку, если параметры отличаются от дефолтов
       if (originalMeta.sampleRate != 0 && (originalMeta.sampleRate != 48000
           || originalMeta.channels != 2 || originalMeta.bits != 16)) {
         String hint = "Исходный файл: "
@@ -104,7 +106,6 @@ public class ExportActivity extends AppCompatActivity {
         Toast.makeText(this, hint, Toast.LENGTH_LONG).show();
       }
 
-      // Настройка для одного файла
       if (selStart >= 0 && selEnd > selStart) {
         int durationMs = (selEnd - selStart) * 1000 / source.sampleRate;
         int m = durationMs / 60000;
@@ -122,10 +123,8 @@ public class ExportActivity extends AppCompatActivity {
         ((RadioButton) findViewById(R.id.rbByMarkers)).setText("По маркерам (нужно ≥ 2 маркера)");
       }
     } else {
-      // Режим банка
-      originalMeta = new AudioMeta(); // Пустая мета для безопасности
+      originalMeta = new AudioMeta();
       ((RadioButton) findViewById(R.id.rbSingle)).setText("Один файл (весь клип)");
-      // При экспорте банка "По маркерам" доступно (там будут проверяться маркеры каждого клипа)
     }
 
     findViewById(R.id.btnExport).setOnClickListener(v -> startExport());
@@ -164,7 +163,6 @@ public class ExportActivity extends AppCompatActivity {
       isDefaultMode = false;
       updateButtonHighlights();
     });
-    // Слушатели для сброса подсветки при ручном изменении
     android.widget.RadioGroup.OnCheckedChangeListener resetListener = (group, checkedId) -> {
       isDefaultMode = false;
       isOriginalMode = false;
@@ -213,9 +211,7 @@ public class ExportActivity extends AppCompatActivity {
     if (ranges.isEmpty())
       return;
 
-    final List<int[]> finalRanges = ranges; // <-- ФИНАЛЬНАЯ КОПИЯ
-
-    final String baseName = stripExt(source.name);
+    final List<int[]> finalRanges = ranges;
     final List<String> written = new ArrayList<>();
     final int[] failed = { 0 };
     androidx.documentfile.provider.DocumentFile dir = androidx.documentfile.provider.DocumentFile
@@ -245,14 +241,14 @@ public class ExportActivity extends AppCompatActivity {
     final int[] failed = { 0 };
     androidx.documentfile.provider.DocumentFile dir = androidx.documentfile.provider.DocumentFile
         .fromTreeUri(this, treeUri);
+    // D6: один BankManager на весь цикл
+    final BankManager bm = new BankManager(this);
 
     new Thread(() -> {
       for (AudioClip clip : bankClips) {
         try {
-          // Если у клипа есть маркеры и выбран режим "по маркерам"
           if (settings.byMarkers && clip.markers != null && clip.markers.size() >= 2) {
-            // Загружаем клип (если нужно, т.к. в списке банка только метаданные)
-            AudioClip fullClip = new BankManager(this).loadClip(clip.dir);
+            AudioClip fullClip = bm.loadClip(clip.dir);
             List<Integer> all = new ArrayList<>(fullClip.markers);
             java.util.TreeSet<Integer> ts = new java.util.TreeSet<>(all);
             Integer[] arr = ts.toArray(new Integer[0]);
@@ -269,8 +265,7 @@ public class ExportActivity extends AppCompatActivity {
               }
             }
           } else {
-            // Экспортируем весь клип как один файл
-            AudioClip fullClip = new BankManager(this).loadClip(clip.dir);
+            AudioClip fullClip = bm.loadClip(clip.dir);
             int[] r = { 0, fullClip.frameCount() };
             String fileName = exportSingleRangeFromClip(treeUri, dir, fullClip, r, 1, settings);
             if (fileName != null)
@@ -304,7 +299,7 @@ public class ExportActivity extends AppCompatActivity {
 
     String raw = ((EditText) findViewById(R.id.edName)).getText().toString().trim();
     s.nameTemplate = raw.isEmpty() ? "{name}_{index}" : raw;
-    s.onlySelection = false; // не используется в ExportActivity, но поле есть в модели
+    s.onlySelection = false;
     return s;
   }
 
@@ -315,7 +310,7 @@ public class ExportActivity extends AppCompatActivity {
   private String exportSingleRangeFromClip(Uri treeUri,
       androidx.documentfile.provider.DocumentFile dir, AudioClip clip, int[] r, int index,
       ExportSettings s) throws Exception {
-    float[] rangePcm = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, r[0], r[1]);
+    float[] rangePcm = AudioOps.trim(clip.pcm, r[0], r[1]);
 
     String nameNoExt = buildName(s.nameTemplate, stripExt(clip.name), index);
     if (nameNoExt.toLowerCase().endsWith(".wav")) {
@@ -330,8 +325,8 @@ public class ExportActivity extends AppCompatActivity {
     // D4: уникальный временный файл + гарантированное удаление
     java.io.File tmp = java.io.File.createTempFile("exp_", ".wav", getCacheDir());
     try {
-      com.grinya.voicesampleprep.audio.WavWriter.write(tmp, rangePcm, clip.sampleRate, s.rate,
-          s.bits, s.stereoMono, s.trueMono, s.normalize, s.fade, s.trimSilence, s.denoise);
+      WavWriter.write(tmp, rangePcm, clip.sampleRate, s.rate, s.bits, s.stereoMono, s.trueMono,
+          s.normalize, s.fade, s.trimSilence, s.denoise);
 
       if (tmp.length() == 0) {
         android.util.Log.w("EXPORT", "Пустой WAV для " + fileName);
@@ -379,6 +374,7 @@ public class ExportActivity extends AppCompatActivity {
     }
   }
 
+  /** D4: удалить только что созданный DocumentFile при ошибке. */
   private void deleteCreated(Uri fileUri) {
     try {
       androidx.documentfile.provider.DocumentFile f = androidx.documentfile.provider.DocumentFile
@@ -403,9 +399,7 @@ public class ExportActivity extends AppCompatActivity {
   }
 
   private static String sanitize(String s) {
-    if (s == null || s.trim().isEmpty())
-      return "clip";
-    return s.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+    return com.grinya.voicesampleprep.util.FileNames.sanitize(s);
   }
 
   private String getUniqueName(androidx.documentfile.provider.DocumentFile dir, String baseName,
@@ -415,7 +409,6 @@ public class ExportActivity extends AppCompatActivity {
 
     String name = baseName + ext;
     int counter = 1;
-    // Пока файл с таким именем существует в папке — увеличиваем счетчик
     while (dir.findFile(name) != null) {
       name = baseName + "_" + counter + ext;
       counter++;
@@ -423,18 +416,10 @@ public class ExportActivity extends AppCompatActivity {
     return name;
   }
 
-  public static void setBankSource(java.util.List<com.grinya.voicesampleprep.model.AudioClip> clips,
-      String name) {
-    bankClips = clips;
-    bankName = name;
-    source = null; // сбрасываем одиночный источник
-  }
-
   private void updateButtonHighlights() {
     Button btnDef = findViewById(R.id.btnDefaults);
     Button btnMeta = findViewById(R.id.btnOriginal);
 
-    // Def
     if (isDefaultMode) {
       btnDef.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFFFFB300));
       btnDef.setTextColor(0xFF0E0E10);
@@ -443,7 +428,6 @@ public class ExportActivity extends AppCompatActivity {
       btnDef.setTextColor(0xFFE8E8EA);
     }
 
-    // Meta
     if (isOriginalMode) {
       btnMeta.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFFFFB300));
       btnMeta.setTextColor(0xFF0E0E10);
@@ -452,5 +436,4 @@ public class ExportActivity extends AppCompatActivity {
       btnMeta.setTextColor(0xFFB0B0B0);
     }
   }
-
 }

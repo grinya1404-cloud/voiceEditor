@@ -1,6 +1,5 @@
 package com.grinya.voicesampleprep;
 
-// +инсерт 
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.InputType;
@@ -13,14 +12,16 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.grinya.voicesampleprep.model.Bank;
 import com.grinya.voicesampleprep.model.BankManager;
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -44,7 +45,7 @@ public class MainActivity extends AppCompatActivity {
     findViewById(R.id.fabAdd).setOnClickListener(v -> showCreateBankDialog());
 
     findViewById(R.id.btnSettings).setOnClickListener(v -> {
-      startActivity(new android.content.Intent(this, SettingsActivity.class));
+      startActivity(new Intent(this, SettingsActivity.class));
     });
   }
 
@@ -54,9 +55,10 @@ public class MainActivity extends AppCompatActivity {
     reload();
   }
 
+  /** E10: DiffUtil вместо notifyDataSetChanged. */
   private void reload() {
     List<Bank> banks = bankManager.listBanks();
-    adapter.setData(banks);
+    adapter.submit(banks);
     txtEmpty.setVisibility(banks.isEmpty() ? View.VISIBLE : View.GONE);
   }
 
@@ -75,19 +77,44 @@ public class MainActivity extends AppCompatActivity {
         }).setNegativeButton("Отмена", null).show();
   }
 
+  /** E11: передаём имя банка через Intent extra, статику не используем. */
   private void openBank(Bank b) {
-    BankActivity.currentBank = b;
-    startActivity(new Intent(this, BankActivity.class));
+    Intent i = new Intent(this, BankActivity.class);
+    i.putExtra("bankName", b.name);
+    startActivity(i);
   }
 
   // ---------- adapter ----------
 
   private class BankAdapter extends RecyclerView.Adapter<BankAdapter.VH> {
-    private List<Bank> data = new java.util.ArrayList<>();
+    private List<Bank> data = new ArrayList<>();
 
-    void setData(List<Bank> d) {
-      data = d;
-      notifyDataSetChanged();
+    void submit(List<Bank> newData) {
+      DiffUtil.DiffResult diff = DiffUtil.calculateDiff(new DiffUtil.Callback() {
+        @Override
+        public int getOldListSize() {
+          return data.size();
+        }
+
+        @Override
+        public int getNewListSize() {
+          return newData.size();
+        }
+
+        @Override
+        public boolean areItemsTheSame(int oldPos, int newPos) {
+          return Objects.equals(data.get(oldPos).name, newData.get(newPos).name);
+        }
+
+        @Override
+        public boolean areContentsTheSame(int oldPos, int newPos) {
+          Bank a = data.get(oldPos);
+          Bank b = newData.get(newPos);
+          return Objects.equals(a.name, b.name) && a.clips.size() == b.clips.size();
+        }
+      });
+      data = newData;
+      diff.dispatchUpdatesTo(this);
     }
 
     @NonNull
