@@ -23,17 +23,14 @@ public class SettingsActivity extends AppCompatActivity {
 
     CheckBox cbStereo = findViewById(R.id.cbStereoWaves);
     SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-    
+
     CheckBox cbZeroCrossing = findViewById(R.id.cbZeroCrossing);
     cbZeroCrossing.setChecked(prefs.getBoolean("zero_crossing", true));
     cbZeroCrossing.setOnCheckedChangeListener((buttonView, isChecked) -> {
       prefs.edit().putBoolean("zero_crossing", isChecked).apply();
     });
-   
-    // Загружаем текущее состояние (по умолчанию - выключено, 1 волна)
-    cbStereo.setChecked(prefs.getBoolean(KEY_STEREO_WAVES, false));
 
-    // Сохраняем при переключении
+    cbStereo.setChecked(prefs.getBoolean(KEY_STEREO_WAVES, false));
     cbStereo.setOnCheckedChangeListener((buttonView, isChecked) -> {
       prefs.edit().putBoolean(KEY_STEREO_WAVES, isChecked).apply();
     });

@@ -5,7 +5,8 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 
 /**
- * Минимальный WAV-ридер: PCM 8/16/24/32-bit int, 32-bit float. Возвращает всегда interleaved stereo float[] (L,R,L,R...). Моно дублируется в оба канала.
+ * Минимальный WAV-ридер: PCM 8/16/24/32-bit int, 32-bit float.
+ * Возвращает всегда interleaved stereo float[] (L,R,L,R...). Моно дублируется.
  */
 public final class WavReader {
 
@@ -13,7 +14,7 @@ public final class WavReader {
     public float[] pcm;
     public int sampleRate;
     public int channels;
-    public int bits; // <-- НОВОЕ ПОЛЕ
+    public int bits;
   }
 
   private WavReader() {
@@ -31,14 +32,13 @@ public final class WavReader {
         throw new IOException("Not a WAV file");
       }
 
-      int format = 0; // 1=PCM, 3=IEEE float
+      int format = 0;
       int channels = 0;
       int sampleRate = 0;
       int bitsPerSample = 0;
       long dataOffset = -1;
       long dataSize = -1;
 
-      // читаем чанки
       while (raf.getFilePointer() + 8 <= raf.length()) {
         byte[] ch = new byte[8];
         raf.readFully(ch);
@@ -53,7 +53,6 @@ public final class WavReader {
           channels = le16(fmt, 2);
           sampleRate = le32(fmt, 4);
           bitsPerSample = le16(fmt, 14);
-          // пропускаем возможный хвост fmt (extensible)
           raf.seek(next);
         } else if ("data".equals(id)) {
           dataOffset = raf.getFilePointer();
@@ -79,6 +78,11 @@ public final class WavReader {
         throw new IOException("Unsupported bps: " + bitsPerSample);
 
       long frames = dataSize / (bytesPerSample * (long) channels);
+      // C7: предупреждаем, если обрезаем
+      if (frames > Integer.MAX_VALUE / 4) {
+        android.util.Log.w("WAV", "Too many frames (" + frames + "), обрезаем до "
+            + (Integer.MAX_VALUE / 4));
+      }
       int frameCount = (int) Math.min(frames, Integer.MAX_VALUE / 4);
 
       float[] monoOrStereo = new float[frameCount * channels];
@@ -98,7 +102,6 @@ public final class WavReader {
 
         int i = 0;
         while (i < n) {
-          // нужно bytesPerSample байт, но они могут быть разорваны между блоками
           int need = bytesPerSample;
           int have = n - i;
           if (carry + have < need) {
@@ -112,14 +115,12 @@ public final class WavReader {
           carry += takeFromBuf;
           i += takeFromBuf;
 
-          // теперь в carryBuf ровно need байт
           float v;
           if (format == 3 && bitsPerSample == 32) {
             int bits = ((carryBuf[3] & 0xFF) << 24) | ((carryBuf[2] & 0xFF) << 16)
                 | ((carryBuf[1] & 0xFF) << 8) | (carryBuf[0] & 0xFF);
             v = Float.intBitsToFloat(bits);
           } else if (bitsPerSample == 8) {
-            // unsigned 8-bit
             v = ((carryBuf[0] & 0xFF) - 128) / 128f;
           } else if (bitsPerSample == 16) {
             short s = (short) (((carryBuf[1] & 0xFF) << 8) | (carryBuf[0] & 0xFF));
@@ -130,7 +131,7 @@ public final class WavReader {
             if ((s & 0x800000) != 0)
               s |= 0xFF000000;
             v = s / 8388608f;
-          } else { // 32-bit int
+          } else {
             int s = ((carryBuf[3] & 0xFF) << 24) | ((carryBuf[2] & 0xFF) << 16)
                 | ((carryBuf[1] & 0xFF) << 8) | (carryBuf[0] & 0xFF);
             v = (float) (s / 2147483648.0);
@@ -147,7 +148,7 @@ public final class WavReader {
       Result r = new Result();
       r.sampleRate = sampleRate;
       r.channels = channels;
-      r.bits = bitsPerSample; 
+      r.bits = bitsPerSample;
 
       if (channels == 2) {
         r.pcm = new float[actualFrames * 2];

@@ -20,36 +20,77 @@ public class AudioInfoDialog {
       return;
     }
 
-    // 1. Анализ всего файла
-    AudioInfo fullInfo = AudioInfo.analyze(clip.pcm, clip.sampleRate);
+    AudioInfo fullInfo = AudioInfo.analyze(clip.pcm, clip.sampleRate, clip.channels);
 
-    // 2. Анализ выделения (если есть)
     AudioInfo selInfo = null;
-    float[] selPcm = null;
     if (selStart >= 0 && selEnd > selStart) {
       int total = clip.frameCount();
       int s = Math.max(0, Math.min(selStart, total));
       int e = Math.max(s, Math.min(selEnd, total));
       if (e > s) {
-        selPcm = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, s, e);
-        selInfo = AudioInfo.analyze(selPcm, clip.sampleRate);
+        float[] selPcm = AudioOps.trim(clip.pcm, s, e);
+        selInfo = AudioInfo.analyze(selPcm, clip.sampleRate, clip.channels);
       }
     }
 
     String text = buildInfoText(clip, fullInfo, selInfo, selStart, selEnd);
+    showDialog(context, "Инфо", text);
+  }
 
+  public static void showInterval(Context context, AudioClip clip, int startFrame, int endFrame) {
+    if (clip == null || clip.pcm == null || clip.pcm.length == 0) {
+      Toast.makeText(context, "Нет данных", Toast.LENGTH_SHORT).show();
+      return;
+    }
+    // G3: защита от перепутанных границ
+    if (startFrame > endFrame) {
+      int t = startFrame;
+      startFrame = endFrame;
+      endFrame = t;
+    }
+
+    float[] range = AudioOps.trim(clip.pcm, startFrame, endFrame);
+    AudioInfo info = AudioInfo.analyze(range, clip.sampleRate, clip.channels);
+
+    int startMarkerNum = clip.markers.indexOf(startFrame) + 1;
+    int endMarkerNum = clip.markers.indexOf(endFrame) + 1;
+
+    StringBuilder sb = new StringBuilder();
+    int startMs = startFrame * 1000 / clip.sampleRate;
+    int endMs = endFrame * 1000 / clip.sampleRate;
+    int durationMs = endMs - startMs;
+
+    sb.append("=== ИНТЕРВАЛ ===\n");
+    sb.append("Начало: ").append(formatMs(startMs)).append("\n");
+    sb.append("Конец: ").append(formatMs(endMs)).append("\n");
+    sb.append("Длительность: ").append(formatMs(durationMs)).append("\n");
+    sb.append("Метки: ")
+        .append(startMarkerNum > 0 ? String.valueOf(startMarkerNum) : "—")
+        .append(" → ")
+        .append(endMarkerNum > 0 ? String.valueOf(endMarkerNum) : "—")
+        .append("\n");
+    sb.append("\n");
+
+    sb.append("=== АНАЛИЗ СИГНАЛА ===\n");
+    sb.append(String.format(Locale.US, "Peak: %.1f dB\n", info.peakDB));
+    sb.append(String.format(Locale.US, "RMS:  %.1f dB\n", info.rmsDB));
+    sb.append("Клиппинг: ").append(info.clipping ? "ДА (!)" : "нет").append("\n");
+
+    showDialog(context, "Инфо интервала", sb.toString());
+  }
+
+  /** G4: единый inflate. */
+  private static void showDialog(Context context, String title, String text) {
     View view = android.view.LayoutInflater.from(context).inflate(R.layout.dialog_info, null);
     ((TextView) view.findViewById(R.id.txtInfo)).setText(text);
-
-    new AlertDialog.Builder(context).setTitle("Инфо").setView(view).setPositiveButton("OK", null)
-        .show();
+    new AlertDialog.Builder(context).setTitle(title).setView(view)
+        .setPositiveButton("OK", null).show();
   }
 
   private static String buildInfoText(AudioClip clip, AudioInfo fullInfo, AudioInfo selInfo,
       int selStart, int selEnd) {
     StringBuilder sb = new StringBuilder();
 
-    // --- Блок выделения (если есть) ---
     if (selInfo != null) {
       int selMs = (selEnd - selStart) * 1000 / clip.sampleRate;
       int mm = selMs / 60000;
@@ -64,7 +105,6 @@ public class AudioInfoDialog {
       sb.append("\n");
     }
 
-    // --- Блок файла ---
     sb.append("=== ФАЙЛ ===\n");
     sb.append("Имя: ").append(clip.name).append("\n");
     if (clip.dir != null) {
@@ -74,7 +114,6 @@ public class AudioInfoDialog {
     }
     sb.append("\n");
 
-    // --- Параметры ---
     sb.append("=== ПАРАМЕТРЫ ===\n");
     sb.append("Sample Rate: ").append(clip.sampleRate).append(" Гц\n");
     sb.append("Каналы: ").append(clip.channels == 2 ? "Stereo" : "Mono").append("\n");
@@ -89,7 +128,6 @@ public class AudioInfoDialog {
         .append("\n");
     sb.append("\n");
 
-    // --- Анализ всего файла ---
     sb.append("=== АНАЛИЗ СИГНАЛА (ВЕСЬ ФАЙЛ) ===\n");
     sb.append(String.format(Locale.US, "Peak: %.1f dB\n", fullInfo.peakDB));
     sb.append(String.format(Locale.US, "RMS:  %.1f dB\n", fullInfo.rmsDB));
@@ -99,7 +137,6 @@ public class AudioInfoDialog {
     sb.append("Тишина в конце: ").append(fullInfo.silenceEndMs).append(" мс\n");
     sb.append("\n");
 
-    // --- Маркеры ---
     sb.append("=== МАРКЕРЫ ===\n");
     sb.append("Всего: ").append(clip.markers.size()).append("\n");
     int show = Math.min(10, clip.markers.size());
@@ -115,7 +152,6 @@ public class AudioInfoDialog {
       sb.append("  ... и ещё ").append(clip.markers.size() - 10).append("\n");
     }
 
-    // --- Интервалы экспорта ---
     if (clip.exportIntervals != null && !clip.exportIntervals.isEmpty()) {
       sb.append("=== ИНТЕРВАЛЫ ЭКСПОРТА ===\n");
       for (int i = 0; i < clip.exportIntervals.size(); i++) {
@@ -136,10 +172,9 @@ public class AudioInfoDialog {
       sb.append("\n");
     }
 
-    // Исходный файл (из .meta)
     if (clip.dir != null) {
-      com.grinya.voicesampleprep.model.AudioMeta meta = com.grinya.voicesampleprep.model.AudioMeta
-          .load(clip.dir);
+      com.grinya.voicesampleprep.model.AudioMeta meta =
+          com.grinya.voicesampleprep.model.AudioMeta.load(clip.dir);
       sb.append("=== ИСХОДНЫЙ ФАЙЛ ===\n");
       if (meta.sampleRate > 0 || meta.channels > 0) {
         if (meta.sampleRate > 0)
@@ -158,50 +193,10 @@ public class AudioInfoDialog {
     return sb.toString();
   }
 
-  public static void showInterval(Context context, AudioClip clip, int startFrame, int endFrame) {
-    if (clip == null || clip.pcm == null || clip.pcm.length == 0) {
-      Toast.makeText(context, "Нет данных", Toast.LENGTH_SHORT).show();
-      return;
-    }
-
-    // Вырезаем интервал и анализируем
-    float[] range = com.grinya.voicesampleprep.util.AudioOps.trim(clip.pcm, startFrame, endFrame);
-    com.grinya.voicesampleprep.util.AudioInfo info = com.grinya.voicesampleprep.util.AudioInfo
-        .analyze(range, clip.sampleRate);
-
-    // Номера меток, которые образуют интервал
-    int startMarkerNum = clip.markers.indexOf(startFrame) + 1;
-    int endMarkerNum = clip.markers.indexOf(endFrame) + 1;
-
-    StringBuilder sb = new StringBuilder();
-    int startMs = startFrame * 1000 / clip.sampleRate;
-    int endMs = endFrame * 1000 / clip.sampleRate;
-    int durationMs = endMs - startMs;
-
-    sb.append("=== ИНТЕРВАЛ ===\n");
-    sb.append("Начало: ").append(formatMs(startMs)).append("\n");
-    sb.append("Конец: ").append(formatMs(endMs)).append("\n");
-    sb.append("Длительность: ").append(formatMs(durationMs)).append("\n");
-    sb.append("Метки: ").append(startMarkerNum).append(" → ").append(endMarkerNum).append("\n");
-    sb.append("\n");
-
-    sb.append("=== АНАЛИЗ СИГНАЛА ===\n");
-    sb.append(String.format(java.util.Locale.US, "Peak: %.1f dB\n", info.peakDB));
-    sb.append(String.format(java.util.Locale.US, "RMS:  %.1f dB\n", info.rmsDB));
-    sb.append("Клиппинг: ").append(info.clipping ? "ДА (!)" : "нет").append("\n");
-
-    View view = android.view.LayoutInflater.from(context).inflate(R.layout.dialog_info, null);
-    ((TextView) view.findViewById(R.id.txtInfo)).setText(sb.toString());
-
-    new AlertDialog.Builder(context).setTitle("Инфо интервала").setView(view)
-        .setPositiveButton("OK", null).show();
-  }
-
   private static String formatMs(int ms) {
     int m = ms / 60000;
     int s = (ms % 60000) / 1000;
     int r = ms % 1000;
-    return String.format(java.util.Locale.US, "%02d:%02d.%03d", m, s, r);
+    return String.format(Locale.US, "%02d:%02d.%03d", m, s, r);
   }
-
 }

@@ -11,22 +11,23 @@ import java.util.Scanner;
 
 public class AudioMeta {
 
-  // Параметры исходного файла
   public int sampleRate;
   public int channels;
   public int bits; // 0 = неизвестно (MP3, FLAC)
   public String format; // "wav", "mp3" и т.д.
 
-  // Маркеры (в фреймах)
   public List<Integer> markers = new ArrayList<>();
   public List<int[]> exportIntervals = new ArrayList<>();
+
   // ---------- Сохранение ----------
 
+  /** Атомарная запись: пишем во временный .meta.tmp, затем rename. */
   public static void save(File wavFile, AudioMeta meta) {
     if (wavFile == null)
       return;
     File metaFile = new File(wavFile.getAbsolutePath() + ".meta");
-    try (FileWriter fw = new FileWriter(metaFile)) {
+    File tmpFile = new File(metaFile.getAbsolutePath() + ".tmp");
+    try (FileWriter fw = new FileWriter(tmpFile)) {
       fw.write("{\n");
       fw.write("  \"markers\": " + markersToJson(meta.markers) + ",\n");
       fw.write("  \"exportIntervals\": " + intervalsToJson(meta.exportIntervals) + ",\n");
@@ -39,6 +40,16 @@ public class AudioMeta {
       fw.write("}\n");
     } catch (IOException e) {
       Log.e("AudioMeta", "Save failed", e);
+      //noinspection ResultOfMethodCallIgnored
+      tmpFile.delete();
+      return;
+    }
+    //noinspection ResultOfMethodCallIgnored
+    metaFile.delete();
+    if (!tmpFile.renameTo(metaFile)) {
+      Log.e("AudioMeta", "Rename failed: " + tmpFile + " -> " + metaFile);
+      //noinspection ResultOfMethodCallIgnored
+      tmpFile.delete();
     }
   }
 
@@ -58,8 +69,6 @@ public class AudioMeta {
         sb.append(sc.nextLine());
       String json = sb.toString().trim();
 
-      // Простейший парсинг (без библиотек)
-      // Ищем "markers": [...]
       int mkStart = json.indexOf("\"markers\"");
       if (mkStart >= 0) {
         int arrStart = json.indexOf("[", mkStart);
@@ -76,12 +85,10 @@ public class AudioMeta {
           }
         }
       }
-      // Читаем exportIntervals
       int eiStart = json.indexOf("\"exportIntervals\"");
       if (eiStart >= 0) {
         int arrStart = json.indexOf("[", eiStart);
         if (arrStart >= 0) {
-          // Находим закрывающую скобку массива (учитывая вложенность)
           int depth = 0;
           int arrEnd = -1;
           for (int i = arrStart; i < json.length(); i++) {
@@ -98,7 +105,6 @@ public class AudioMeta {
           }
           if (arrEnd > arrStart) {
             String arr = json.substring(arrStart, arrEnd + 1);
-            // Парсим вложенные пары [a, b]
             java.util.regex.Matcher m = java.util.regex.Pattern
                 .compile("\\[(\\d+)\\s*,\\s*(\\d+)\\]").matcher(arr);
             while (m.find()) {
@@ -112,7 +118,6 @@ public class AudioMeta {
           }
         }
       }
-      // Ищем sampleRate, channels, bits, format
       meta.sampleRate = parseIntField(json, "sampleRate");
       meta.channels = parseIntField(json, "channels");
       meta.bits = parseIntField(json, "bits");
@@ -194,6 +199,7 @@ public class AudioMeta {
   private static String escape(String s) {
     if (s == null)
       return "";
-    return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+        .replace("\r", "\\r");
   }
 }

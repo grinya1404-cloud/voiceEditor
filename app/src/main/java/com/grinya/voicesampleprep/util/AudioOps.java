@@ -30,18 +30,6 @@ public final class AudioOps {
     return out;
   }
 
-  /** Заменить фрагмент тишиной. */
-  // public static float[] silenceRange(float[] pcm, int startFrame, int endFrame) {
-  // int ch = 2;
-  // int totalFrames = pcm.length / ch;
-  // int s = Math.max(0, Math.min(startFrame, totalFrames));
-  // int e = Math.max(s, Math.min(endFrame, totalFrames));
-  // float[] out = pcm.clone();
-  // for (int i = s * ch; i < e * ch; i++)
-  // out[i] = 0f;
-  // return out;
-  // }
-
   /** Усиление на dB (может быть отрицательным). */
   public static float[] gain(float[] pcm, float dB) {
     float mul = (float) Math.pow(10.0, dB / 20.0);
@@ -50,19 +38,6 @@ public final class AudioOps {
       out[i] = pcm[i] * mul;
     return out;
   }
-
-  /** Усиление только к диапазону фреймов. */
-  // public static float[] gainRange(float[] pcm, int startFrame, int endFrame, float dB) {
-  // int ch = 2;
-  // int totalFrames = pcm.length / ch;
-  // int s = Math.max(0, Math.min(startFrame, totalFrames));
-  // int e = Math.max(s, Math.min(endFrame, totalFrames));
-  // float mul = (float) Math.pow(10.0, dB / 20.0);
-  // float[] out = pcm.clone();
-  // for (int i = s * ch; i < e * ch; i++)
-  // out[i] *= mul;
-  // return out;
-  // }
 
   /** Пиковая нормализация к target (0..1). */
   public static float[] normalizePeak(float[] pcm, float target) {
@@ -80,47 +55,6 @@ public final class AudioOps {
       out[i] = pcm[i] * mul;
     return out;
   }
-
-  /** Fade-in (линейный) длиной fadeFrames. */
-  // public static float[] fadeIn(float[] pcm, int fadeFrames) {
-  // int ch = 2;
-  // float[] out = pcm.clone();
-  // int totalFrames = out.length / ch;
-  // int n = Math.min(fadeFrames, totalFrames);
-  // for (int i = 0; i < n; i++) {
-  // float g = (float) i / n;
-  // out[i * ch] *= g;
-  // out[i * ch + 1] *= g;
-  // }
-  // return out;
-  // }
-
-  /** Fade-out (линейный) длиной fadeFrames. */
-  // public static float[] fadeOut(float[] pcm, int fadeFrames) {
-  // int ch = 2;
-  // float[] out = pcm.clone();
-  // int totalFrames = out.length / ch;
-  // int n = Math.min(fadeFrames, totalFrames);
-  // for (int i = 0; i < n; i++) {
-  // float g = 1f - (float) i / n;
-  // int idx = (totalFrames - n + i) * ch;
-  // out[idx] *= g;
-  // out[idx + 1] *= g;
-  // }
-  // return out;
-  // }
-
-  /** Реверс (по фреймам, каналы остаются на своих местах). */
-  // public static float[] reverse(float[] pcm) {
-  // int ch = 2;
-  // int n = pcm.length / ch;
-  // float[] out = new float[pcm.length];
-  // for (int i = 0; i < n; i++) {
-  // out[i * ch] = pcm[(n - 1 - i) * ch];
-  // out[i * ch + 1] = pcm[(n - 1 - i) * ch + 1];
-  // }
-  // return out;
-  // }
 
   /** Свести в моно (пересчитывает массив: каждый фрейм — один сэмпл). */
   public static float[] toMono(float[] pcm) {
@@ -265,7 +199,8 @@ public final class AudioOps {
     int totalFrames = out.length / ch;
     int n = Math.min(fadeFrames, totalFrames);
     for (int i = 0; i < n; i++) {
-      float g = (float) i / n;
+      // C2: последний сэмпл достигает 1.0
+      float g = n > 1 ? (float) i / (n - 1) : 1f;
       if (applyL)
         out[i * ch] *= g;
       if (applyR)
@@ -280,7 +215,8 @@ public final class AudioOps {
     int totalFrames = out.length / ch;
     int n = Math.min(fadeFrames, totalFrames);
     for (int i = 0; i < n; i++) {
-      float g = 1f - (float) i / n;
+      // C2: последний сэмпл достигает 0.0
+      float g = n > 1 ? 1f - (float) i / (n - 1) : 0f;
       int idx = (totalFrames - n + i) * ch;
       if (applyL)
         out[idx] *= g;
@@ -346,12 +282,17 @@ public final class AudioOps {
     return out;
   }
 
+  /**
+   * C4: сведение в моно с учётом корреляции.
+   * correlation < 0 (противофаза) → берём максимум по модулю (без гашения).
+   * correlation >= 0 → Half-Power (1/√2).
+   * Если пик > 1.0 — нормализуем до 1.0.
+   */
   public static float[] toMonoSmart(float[] pcm) {
     int frames = pcm.length / 2;
     if (frames == 0)
       return new float[0];
 
-    // 1. Считаем корреляцию L и R
     double sumLR = 0, sumL2 = 0, sumR2 = 0;
     for (int i = 0; i < pcm.length; i += 2) {
       sumLR += pcm[i] * pcm[i + 1];
@@ -365,7 +306,6 @@ public final class AudioOps {
     float peak = 0f;
 
     if (correlation < 0) {
-      // Противофаза: берём максимум по модулю (без гашения)
       for (int i = 0; i < frames; i++) {
         float l = pcm[i * 2];
         float r = pcm[i * 2 + 1];
@@ -374,7 +314,6 @@ public final class AudioOps {
           peak = Math.abs(out[i]);
       }
     } else {
-      // Нормальное стерео: Half-Power (1/√2)
       float k = 0.7071f;
       for (int i = 0; i < frames; i++) {
         out[i] = (pcm[i * 2] + pcm[i * 2 + 1]) * k;
@@ -383,7 +322,6 @@ public final class AudioOps {
       }
     }
 
-    // 2. Защита от клиппинга: если пик > 1.0, нормализуем до 1.0
     if (peak > 1.0f) {
       float mul = 1.0f / peak;
       for (int i = 0; i < frames; i++) {
@@ -393,154 +331,157 @@ public final class AudioOps {
 
     return out;
   }
-
   public static float[] fadeInRange(float[] pcm, int startFrame, int endFrame, int fadeFrames,
-      boolean applyL, boolean applyR) {
-    int ch = 2;
-    int total = pcm.length / ch;
-    int s = Math.max(0, Math.min(startFrame, total));
-    int e = Math.max(s, Math.min(endFrame, total));
-    int n = Math.min(fadeFrames, e - s);
-    if (n <= 0)
-      return pcm.clone();
+    boolean applyL, boolean applyR) {
+  int ch = 2;
+  int total = pcm.length / ch;
+  int s = Math.max(0, Math.min(startFrame, total));
+  int e = Math.max(s, Math.min(endFrame, total));
+  int n = Math.min(fadeFrames, e - s);
+  if (n <= 0)
+    return pcm.clone();
 
-    float[] out = pcm.clone();
-    for (int i = 0; i < n; i++) {
-      float g = (float) i / n;
-      int idx = (s + i) * ch;
-      if (applyL)
-        out[idx] *= g;
-      if (applyR)
-        out[idx + 1] *= g;
-    }
-    return out;
+  float[] out = pcm.clone();
+  for (int i = 0; i < n; i++) {
+    // C2: последний сэмпл достигает 1.0
+    float g = n > 1 ? (float) i / (n - 1) : 1f;
+    int idx = (s + i) * ch;
+    if (applyL)
+      out[idx] *= g;
+    if (applyR)
+      out[idx + 1] *= g;
   }
+  return out;
+}
 
-  public static float[] fadeOutRange(float[] pcm, int startFrame, int endFrame, int fadeFrames,
-      boolean applyL, boolean applyR) {
-    int ch = 2;
-    int total = pcm.length / ch;
-    int s = Math.max(0, Math.min(startFrame, total));
-    int e = Math.max(s, Math.min(endFrame, total));
-    int n = Math.min(fadeFrames, e - s);
-    if (n <= 0)
-      return pcm.clone();
+public static float[] fadeOutRange(float[] pcm, int startFrame, int endFrame, int fadeFrames,
+    boolean applyL, boolean applyR) {
+  int ch = 2;
+  int total = pcm.length / ch;
+  int s = Math.max(0, Math.min(startFrame, total));
+  int e = Math.max(s, Math.min(endFrame, total));
+  int n = Math.min(fadeFrames, e - s);
+  if (n <= 0)
+    return pcm.clone();
 
-    float[] out = pcm.clone();
-    for (int i = 0; i < n; i++) {
-      float g = 1f - (float) i / n;
-      int idx = (e - n + i) * ch;
-      if (applyL)
-        out[idx] *= g;
-      if (applyR)
-        out[idx + 1] *= g;
-    }
-    return out;
+  float[] out = pcm.clone();
+  for (int i = 0; i < n; i++) {
+    // C2: последний сэмпл достигает 0.0
+    float g = n > 1 ? 1f - (float) i / (n - 1) : 0f;
+    int idx = (e - n + i) * ch;
+    if (applyL)
+      out[idx] *= g;
+    if (applyR)
+      out[idx + 1] *= g;
   }
+  return out;
+}
 
-  public static float[] trimSilence(float[] pcm, float threshold, int channels) {
-    if (pcm.length == 0 || channels <= 0)
-      return pcm;
-    int total = pcm.length / channels;
-    int s = 0, e = total;
+/**
+ * C1: обрезает тишину в начале/конце.
+ * Если весь файл — тишина, возвращает пустой массив (а не весь файл).
+ */
+public static float[] trimSilence(float[] pcm, float threshold, int channels) {
+  if (pcm.length == 0 || channels <= 0)
+    return pcm;
+  int total = pcm.length / channels;
+  int s = -1, e = -1;
 
-    // Ищем первую не-тишину
-    for (int i = 0; i < total; i++) {
-      boolean silent = true;
-      for (int c = 0; c < channels; c++) {
-        if (Math.abs(pcm[i * channels + c]) >= threshold) {
-          silent = false;
-          break;
-        }
-      }
-      if (!silent) {
-        s = i;
+  for (int i = 0; i < total; i++) {
+    boolean silent = true;
+    for (int c = 0; c < channels; c++) {
+      if (Math.abs(pcm[i * channels + c]) >= threshold) {
+        silent = false;
         break;
       }
     }
+    if (!silent) {
+      s = i;
+      break;
+    }
+  }
 
-    // Ищем последнюю не-тишину
-    for (int i = total - 1; i >= s; i--) {
-      boolean silent = true;
-      for (int c = 0; c < channels; c++) {
-        if (Math.abs(pcm[i * channels + c]) >= threshold) {
-          silent = false;
-          break;
-        }
-      }
-      if (!silent) {
-        e = i + 1;
+  // весь файл — тишина
+  if (s < 0)
+    return new float[0];
+
+  for (int i = total - 1; i >= s; i--) {
+    boolean silent = true;
+    for (int c = 0; c < channels; c++) {
+      if (Math.abs(pcm[i * channels + c]) >= threshold) {
+        silent = false;
         break;
       }
     }
-
-    if (e <= s)
-      return new float[0];
-    float[] out = new float[(e - s) * channels];
-    System.arraycopy(pcm, s * channels, out, 0, out.length);
-    return out;
+    if (!silent) {
+      e = i + 1;
+      break;
+    }
   }
 
-  /**
-   * High-Pass фильтр (Баттерворт 2-го порядка).
-   * 
-   * @param pcm        стерео-массив (L,R,L,R...)
-   * @param sampleRate частота дискретизации (48000)
-   * @param cutoffHz   частота среза (например, 80 Гц)
-   * @param applyL     применять к левому каналу
-   * @param applyR     применять к правому каналу
-   */
-  public static float[] highPass(float[] pcm, int sampleRate, float cutoffHz, boolean applyL,
-      boolean applyR) {
-    int frames = pcm.length / 2;
-    float[] out = pcm.clone();
+  if (e <= s)
+    return new float[0];
+  float[] out = new float[(e - s) * channels];
+  System.arraycopy(pcm, s * channels, out, 0, out.length);
+  return out;
+}
 
-    // Коэффициенты для Баттерворта 2-го порядка
-    double w0 = 2.0 * Math.PI * cutoffHz / sampleRate;
-    double cosW0 = Math.cos(w0);
-    double sinW0 = Math.sin(w0);
-    double alpha = sinW0 / (2.0 * Math.sqrt(2.0)); // Q = 1/√2 для Баттерворта
+/**
+ * High-Pass фильтр (Баттерворт 2-го порядка).
+ *
+ * @param pcm        стерео-массив (L,R,L,R...)
+ * @param sampleRate частота дискретизации (48000)
+ * @param cutoffHz   частота среза (например, 80 Гц)
+ * @param applyL     применять к левому каналу
+ * @param applyR     применять к правому каналу
+ */
+public static float[] highPass(float[] pcm, int sampleRate, float cutoffHz, boolean applyL,
+    boolean applyR) {
+  int frames = pcm.length / 2;
+  float[] out = pcm.clone();
 
-    double b0 = (1 + cosW0) / 2;
-    double b1 = -(1 + cosW0);
-    double b2 = (1 + cosW0) / 2;
-    double a0 = 1 + alpha;
-    double a1 = -2 * cosW0;
-    double a2 = 1 - alpha;
+  double w0 = 2.0 * Math.PI * cutoffHz / sampleRate;
+  double cosW0 = Math.cos(w0);
+  double sinW0 = Math.sin(w0);
+  double alpha = sinW0 / (2.0 * Math.sqrt(2.0));
 
-    // Нормируем коэффициенты
-    b0 /= a0;
-    b1 /= a0;
-    b2 /= a0;
-    a1 /= a0;
-    a2 /= a0;
+  double b0 = (1 + cosW0) / 2;
+  double b1 = -(1 + cosW0);
+  double b2 = (1 + cosW0) / 2;
+  double a0 = 1 + alpha;
+  double a1 = -2 * cosW0;
+  double a2 = 1 - alpha;
 
-    // Применяем фильтр к каналам
-    if (applyL) {
-      double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
-      for (int i = 0; i < frames; i++) {
-        double x = out[i * 2];
-        double y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
-        x2 = x1;
-        x1 = x;
-        y2 = y1;
-        y1 = y;
-        out[i * 2] = (float) y;
-      }
+  b0 /= a0;
+  b1 /= a0;
+  b2 /= a0;
+  a1 /= a0;
+  a2 /= a0;
+
+  if (applyL) {
+    double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (int i = 0; i < frames; i++) {
+      double x = out[i * 2];
+      double y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+      x2 = x1;
+      x1 = x;
+      y2 = y1;
+      y1 = y;
+      out[i * 2] = (float) y;
     }
-    if (applyR) {
-      double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
-      for (int i = 0; i < frames; i++) {
-        double x = out[i * 2 + 1];
-        double y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
-        x2 = x1;
-        x1 = x;
-        y2 = y1;
-        y1 = y;
-        out[i * 2 + 1] = (float) y;
-      }
-    }
-    return out;
   }
-
+  if (applyR) {
+    double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (int i = 0; i < frames; i++) {
+      double x = out[i * 2 + 1];
+      double y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+      x2 = x1;
+      x1 = x;
+      y2 = y1;
+      y1 = y;
+      out[i * 2 + 1] = (float) y;
+    }
+  }
+  return out;
+}
 }

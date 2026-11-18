@@ -3,12 +3,12 @@ package com.grinya.voicesampleprep.util;
 import com.grinya.voicesampleprep.model.AudioMeta;
 
 public class AudioInfo {
-  public float peakDB; // пик в дБ
-  public float rmsDB; // RMS в дБ
-  public boolean clipping; // есть ли клиппинг (peak > 0.999)
-  public float balanceLR; // разница L-R в дБ (0 = одинаково)
-  public int silenceStartMs; // тишина в начале (мс)
-  public int silenceEndMs; // тишина в конце (мс)
+  public float peakDB;
+  public float rmsDB;
+  public boolean clipping;
+  public float balanceLR;
+  public int silenceStartMs;
+  public int silenceEndMs;
   public int totalFrames;
   public int sampleRate;
   public int channels;
@@ -16,22 +16,27 @@ public class AudioInfo {
   public int originalChannels;
   public int originalBits;
   public String originalFormat;
-  
+
   public static AudioInfo analyze(float[] pcm, int sampleRate) {
+    return analyze(pcm, sampleRate, 2);
+  }
+
+  /** G1: channels — параметр, не хардкод. */
+  public static AudioInfo analyze(float[] pcm, int sampleRate, int channels) {
     AudioInfo info = new AudioInfo();
     info.sampleRate = sampleRate;
-    info.channels = 2;
-    info.totalFrames = pcm.length / 2;
+    info.channels = channels;
+    info.totalFrames = pcm.length / channels;
 
     if (pcm.length == 0)
       return info;
 
     float peakL = 0, peakR = 0;
     double sumL = 0, sumR = 0;
-    int count = 0;
+    long count = 0;
     boolean clipping = false;
 
-    for (int i = 0; i < pcm.length; i += 2) {
+    for (int i = 0; i + 1 < pcm.length; i += 2) {
       float l = pcm[i];
       float r = pcm[i + 1];
       float absL = Math.abs(l);
@@ -56,12 +61,10 @@ public class AudioInfo {
     double rms = (rmsL + rmsR) / 2;
     info.rmsDB = (float) (20 * Math.log10(Math.max(rms, 1e-9)));
 
-    // Баланс L/R в дБ
     float dbL = (float) (20 * Math.log10(Math.max(rmsL, 1e-9)));
     float dbR = (float) (20 * Math.log10(Math.max(rmsR, 1e-9)));
     info.balanceLR = dbL - dbR;
 
-    // Тишина в начале/конце (порог -60 дБ = 0.001)
     int startSilence = 0;
     for (int i = 0; i < pcm.length; i += 2) {
       if (Math.abs(pcm[i]) > 0.001f || Math.abs(pcm[i + 1]) > 0.001f)

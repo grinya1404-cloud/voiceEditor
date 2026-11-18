@@ -5,9 +5,7 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.EditText;
-import android.widget.ImageButton;
 import android.widget.RadioButton;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -24,7 +22,6 @@ import com.grinya.voicesampleprep.model.AudioClip;
 import com.grinya.voicesampleprep.model.AudioMeta;
 import com.grinya.voicesampleprep.model.Bank;
 import com.grinya.voicesampleprep.model.BankManager;
-import com.grinya.voicesampleprep.model.ExportSettings;
 import com.grinya.voicesampleprep.util.AudioOps;
 import com.grinya.voicesampleprep.util.ExportUtils;
 
@@ -59,13 +56,11 @@ public class ExportToBankActivity extends AppCompatActivity {
       return;
     }
 
-    // Забираем принудительный интервал и сразу сбрасываем статику
     this.forcedStartLocal = forcedStart;
     this.forcedEndLocal = forcedEnd;
     forcedStart = -1;
     forcedEnd = -1;
 
-    // Скрываем выбор режима, если есть принудительный интервал
     if (forcedStartLocal != -1) {
       findViewById(R.id.rgMode).setVisibility(View.GONE);
     }
@@ -79,7 +74,6 @@ public class ExportToBankActivity extends AppCompatActivity {
     findViewById(R.id.btnBack).setOnClickListener(v -> finish());
     findViewById(R.id.btnNewBank).setOnClickListener(v -> showCreateBankDialog());
 
-    // Если маркеров меньше 2, отключаем режим "по маркерам"
     if (clip.markers.size() < 2) {
       ((RadioButton) findViewById(R.id.rbByMarkers)).setEnabled(false);
       ((RadioButton) findViewById(R.id.rbByMarkers)).setText("По маркерам (нужно ≥ 2 маркера)");
@@ -122,11 +116,12 @@ public class ExportToBankActivity extends AppCompatActivity {
       return;
     }
 
-    // Финализируем для захвата в потоке
     final List<int[]> ranges = tempRanges;
-
     final int[] saved = { 0 };
     final int[] failed = { 0 };
+
+    // D7: исходные параметры — один раз до цикла
+    final AudioMeta oldMeta = clip.dir != null ? AudioMeta.load(clip.dir) : null;
 
     new Thread(() -> {
       for (int idx = 0; idx < ranges.size(); idx++) {
@@ -144,18 +139,22 @@ public class ExportToBankActivity extends AppCompatActivity {
             counter++;
           }
 
-          // Внутренний формат банка: 16-bit, 48к, стерео
           WavWriter.write(outFile, rangePcm, clip.sampleRate, clip.sampleRate, 16, false, false,
               false, false, false);
 
-          // .meta
-          AudioMeta oldMeta = AudioMeta.load(clip.dir); // исходные параметры
+          // D7: .meta с параметрами ИСХОДНИКА (а не текущего 48k/2/16)
           AudioMeta meta = new AudioMeta();
-          meta.sampleRate = oldMeta.sampleRate > 0 ? oldMeta.sampleRate : clip.sampleRate;
-          meta.channels = oldMeta.channels > 0 ? oldMeta.channels : clip.channels;
-          meta.bits = oldMeta.bits;
-          meta.format = oldMeta.format != null && !oldMeta.format.isEmpty() ? oldMeta.format
-              : "wav";
+          if (oldMeta != null && (oldMeta.sampleRate > 0 || oldMeta.channels > 0)) {
+            meta.sampleRate = oldMeta.sampleRate;
+            meta.channels = oldMeta.channels;
+            meta.bits = oldMeta.bits;
+            meta.format = oldMeta.format;
+          } else {
+            meta.sampleRate = clip.sampleRate;
+            meta.channels = clip.channels;
+            meta.bits = 16;
+            meta.format = "wav";
+          }
           AudioMeta.save(outFile, meta);
 
           saved[0]++;

@@ -1,7 +1,6 @@
 package com.grinya.voicesampleprep.util;
 
 import com.grinya.voicesampleprep.model.AudioClip;
-import com.grinya.voicesampleprep.model.ExportSettings;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -12,7 +11,6 @@ public class ExportUtils {
       int selEnd) {
     List<int[]> ranges = new ArrayList<>();
     if (byMarkers) {
-      // Если есть выбранные интервалы — используем только их
       if (clip.exportIntervals != null && !clip.exportIntervals.isEmpty()) {
         for (int[] i : clip.exportIntervals) {
           ranges.add(new int[] { i[0], i[1] });
@@ -20,15 +18,14 @@ public class ExportUtils {
         return ranges;
       }
 
-      // Иначе — все интервалы между маркерами (как раньше)
       if (clip.markers.size() < 2)
         return ranges;
-      List<Integer> all = new ArrayList<>(clip.markers);
-      java.util.TreeSet<Integer> ts = new java.util.TreeSet<>(all);
-      Integer[] arr = ts.toArray(new Integer[0]);
-      for (int i = 0; i < arr.length - 1; i++) {
-        if (arr[i + 1] > arr[i])
-          ranges.add(new int[] { arr[i], arr[i + 1] });
+      // D9: markers уже отсортированы (Collections.sort в addMarker)
+      for (int i = 0; i < clip.markers.size() - 1; i++) {
+        int a = clip.markers.get(i);
+        int b = clip.markers.get(i + 1);
+        if (b > a)
+          ranges.add(new int[] { a, b });
       }
     } else {
       if (selStart >= 0 && selEnd > selStart) {
@@ -53,6 +50,7 @@ public class ExportUtils {
     return dot > 0 ? s.substring(0, dot) : s;
   }
 
+  /** D8: единый sanitize. */
   public static String sanitize(String s) {
     return FileNames.sanitize(s);
   }

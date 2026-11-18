@@ -5,12 +5,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 
-import com.grinya.voicesampleprep.util.AudioOps; // ← добавь эту строку
-
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import com.grinya.voicesampleprep.util.AudioOps;
 
 public final class WavWriter {
 
@@ -19,7 +14,6 @@ public final class WavWriter {
    * @param srcRate sample rate исходного pcm
    * @param dstRate sample rate для файла (если != srcRate — пересэмплируем)
    * @param bits    16 или 24
-   * @param mono    true — свести в моно
    */
   public static void write(File f, float[] pcm, int srcRate, int dstRate, int bits,
       boolean isStereoMono, boolean isTrueMono, boolean normalize, boolean fade,
@@ -33,16 +27,16 @@ public final class WavWriter {
       rate = dstRate;
     }
 
-    // 2. Denoise (шумодав) — ДО сведения каналов
+    // 2. Denoise
     if (denoise) {
       data = com.grinya.voicesampleprep.util.Denoiser.denoiseStereo(data);
     }
 
-    // 2.5 Сведение каналов (везде используем умное сведение)
+    // 2.5 Сведение каналов
     if (isTrueMono) {
-      data = AudioOps.toMonoSmart(data); // 1 канал
+      data = AudioOps.toMonoSmart(data);
     } else if (isStereoMono) {
-      float[] mono = AudioOps.toMonoSmart(data); // умное сведение
+      float[] mono = AudioOps.toMonoSmart(data);
       data = new float[mono.length * 2];
       for (int i = 0; i < mono.length; i++) {
         data[i * 2] = mono[i];
@@ -50,28 +44,25 @@ public final class WavWriter {
       }
     }
 
-    // 3. Trim Silence (по итоговому сигналу)
+    // 3. Trim Silence
     if (trimSilence) {
       int ch = isTrueMono ? 1 : 2;
-      data = AudioOps.trimSilence(data, 0.003f, ch); // <-- ИСПОЛЬЗУЕМ AudioOps
+      data = AudioOps.trimSilence(data, 0.003f, ch);
     }
 
-    // 4. Normalize (по итоговому сигналу)
+    // 4. Normalize
     if (normalize) {
       data = AudioOps.normalizePeak(data, 0.9f);
     }
 
-    // 5. Fade (по итоговому сигналу)
+    // 5. Fade
     if (fade) {
       int ff = rate * 5 / 1000;
       data = AudioOps.fadeIn(data, ff, true, true);
       data = AudioOps.fadeOut(data, ff, true, true);
     }
 
-    // 6. Определяем channels
     int channels = isTrueMono ? 1 : 2;
-
-    // 7. Запись (как у тебя сейчас)
     int bytesPerSample = bits / 8;
     int dataBytes = data.length * bytesPerSample;
 
@@ -82,11 +73,11 @@ public final class WavWriter {
 
       writeAscii(out, "fmt ");
       writeLE32(out, 16);
-      writeLE16(out, 1); // PCM
+      writeLE16(out, 1);
       writeLE16(out, channels);
       writeLE32(out, rate);
-      writeLE32(out, rate * channels * bytesPerSample); // byte rate
-      writeLE16(out, channels * bytesPerSample); // block align
+      writeLE32(out, rate * channels * bytesPerSample);
+      writeLE16(out, channels * bytesPerSample);
       writeLE16(out, bits);
 
       writeAscii(out, "data");
@@ -110,7 +101,7 @@ public final class WavWriter {
         }
         if (bi > 0)
           out.write(buf, 0, bi);
-      } else { // 24
+      } else {
         byte[] buf = new byte[8190];
         int bi = 0;
         for (float v : data) {
@@ -133,7 +124,6 @@ public final class WavWriter {
     }
   }
 
-  // Перегрузка для обратной совместимости (без denoise)
   public static void write(File f, float[] pcm, int srcRate, int dstRate, int bits,
       boolean isStereoMono, boolean isTrueMono, boolean normalize, boolean fade,
       boolean trimSilence) throws IOException {

@@ -7,10 +7,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.widget.CheckBox;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -19,9 +19,9 @@ import androidx.core.content.ContextCompat;
 
 import com.grinya.voicesampleprep.audio.Recorder;
 import com.grinya.voicesampleprep.model.AudioClip;
+import com.grinya.voicesampleprep.model.AudioMeta;
 import com.grinya.voicesampleprep.model.Bank;
 import com.grinya.voicesampleprep.model.BankManager;
-import com.grinya.voicesampleprep.model.AudioMeta;
 
 import java.util.Locale;
 
@@ -132,7 +132,6 @@ public class RecordActivity extends AppCompatActivity implements Recorder.Listen
       AudioClip clip = new AudioClip("rec", recordedPcm, 48000);
       java.io.File saved = bankManager.saveClipToBank(currentBank, clip, "rec");
 
-      // Сохраняем .meta для записанного файла
       if (saved != null) {
         AudioMeta meta = new AudioMeta();
         meta.sampleRate = 48000;
@@ -147,8 +146,6 @@ public class RecordActivity extends AppCompatActivity implements Recorder.Listen
       Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show();
     }
   }
-
-  // ---------- Recorder.Listener ----------
 
   @Override
   public void onLevel(float rms) {

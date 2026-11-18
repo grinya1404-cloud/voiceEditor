@@ -46,12 +46,23 @@ public class BankActivity extends AppCompatActivity {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_bank);
 
+    // E11: восстановить currentBank из Intent extra
+    String bankName = getIntent().getStringExtra("bankName");
+    bankManager = new BankManager(this);
+    if (bankName != null) {
+      for (Bank b : bankManager.listBanks()) {
+        if (b.name.equals(bankName)) {
+          currentBank = b;
+          break;
+        }
+      }
+    }
+
     if (currentBank == null) {
       finish();
       return;
     }
 
-    bankManager = new BankManager(this);
     rv = findViewById(R.id.rvClips);
     txtEmpty = findViewById(R.id.txtEmpty);
     adapter = new ClipAdapter();
@@ -365,12 +376,12 @@ public class BankActivity extends AppCompatActivity {
         if (!tmp.renameTo(renamed)) {
           // renameTo не сработал — копируем
           copyFile(tmp, renamed);
-          //noinspection ResultOfMethodCallIgnored
+          // noinspection ResultOfMethodCallIgnored
           tmp.delete();
         }
 
         bankManager.importFile(currentBank, renamed);
-        //noinspection ResultOfMethodCallIgnored
+        // noinspection ResultOfMethodCallIgnored
         renamed.delete();
 
         runOnUiThread(() -> {
@@ -379,13 +390,13 @@ public class BankActivity extends AppCompatActivity {
         });
       } catch (Throwable e) {
         android.util.Log.e("IMPORT", "Error", e);
-        runOnUiThread(() -> Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG)
-            .show());
+        runOnUiThread(
+            () -> Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show());
       }
     }).start();
   }
-  
-    // ---------- adapter ----------
+
+  // ---------- adapter ----------
 
   private class ClipAdapter extends RecyclerView.Adapter<ClipAdapter.VH> {
     private List<AudioClip> data = new java.util.ArrayList<>();

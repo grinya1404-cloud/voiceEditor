@@ -7,7 +7,10 @@ import android.os.Handler;
 import android.os.Looper;
 
 /**
- * Надежный плеер для interleaved stereo float[] @ 48 кГц.
+ * F14: две системы позиционирования:
+ *  - playStartFrame/playStartTimeMs/streamStartFrame — «ручной» расчёт по времени;
+ *  - lastTimestampFrame/lastTimestampNanos/hasValidTimestamp — по AudioTrack.getTimestamp.
+ *  Приоритет: timestamp (если доступен), иначе — ручной.
  */
 public class AudioPlayer {
 
@@ -27,8 +30,8 @@ public class AudioPlayer {
   private int totalFrames;
 
   private volatile boolean playing = false;
-  private volatile int currentFrame = 0; // Текущая позиция (для интерфейса)
-  private int endFrame = 0; // До какого фрейма играть
+  private volatile int currentFrame = 0;
+  private int endFrame = 0;
 
   private Thread playerThread;
   private final Handler ui = new Handler(Looper.getMainLooper());
@@ -55,16 +58,13 @@ public class AudioPlayer {
           int frameToReport;
 
           if (hasValidTimestamp) {
-            // Время, прошедшее с последнего замера
             long now = System.nanoTime();
             long elapsedNanos = now - lastTimestampNanos;
             long framesAdvanced = (elapsedNanos * RATE) / 1_000_000_000L;
 
-            // Прибавляем позицию AudioTrack к тому месту, откуда мы начали играть
             long totalFrames = lastTimestampFrame + framesAdvanced;
             frameToReport = streamStartFrame + (int) totalFrames;
           } else {
-            // Если таймстамп ещё не получен (или не поддерживается) — используем старый способ
             int elapsedMs = (int) (System.currentTimeMillis() - playStartTimeMs);
             frameToReport = playStartFrame + (elapsedMs * RATE / 1000);
           }
@@ -86,9 +86,8 @@ public class AudioPlayer {
     this.listener = l;
   }
 
+  /** F1: не вызываем pause() — он пересчитывает currentFrame от старых playStart*. */
   public void setPcm(float[] pcm) {
-    // Останавливаем воспроизведение, но НЕ через pause() —
-    // pause() пересчитывает currentFrame от старых playStart*, что даёт «уехавшую» позицию.
     playing = false;
     playGeneration++;
     ui.removeCallbacks(positionTick);
@@ -114,7 +113,6 @@ public class AudioPlayer {
     this.endFrame = Math.min(totalFrames, endFrame);
     if (this.endFrame <= 0)
       this.endFrame = totalFrames;
-    // Если текущая позиция вне диапазона — ставим в начало
     if (this.currentFrame < startFrame || this.currentFrame >= this.endFrame) {
       this.currentFrame = Math.max(0, startFrame);
     }
@@ -138,14 +136,14 @@ public class AudioPlayer {
     boolean wasPlaying = playing;
     pause();
     currentFrame = Math.max(0, Math.min(endFrame, frame));
-    playStartFrame = currentFrame; // ← важно!
+    playStartFrame = currentFrame;
     playStartTimeMs = System.currentTimeMillis();
     notifyPosition();
     if (wasPlaying)
       play();
   }
-
-  public void play() {
+  
+    public void play() {
     android.util.Log.d("PLAYER", "play() called. currentFrame=" + currentFrame + " endFrame="
         + endFrame + " totalFrames=" + totalFrames);
 
@@ -154,18 +152,14 @@ public class AudioPlayer {
     if (playing)
       return;
 
-    // Ждем завершения предыдущего потока
+    // F13: не блокируем UI-поток join(500); если старый поток жив — просто увеличиваем поколение,
+    // он сам завершится и увидит myGeneration != playGeneration.
     if (playerThread != null && playerThread.isAlive()) {
-      try {
-        playerThread.join(500);
-      } catch (InterruptedException ignored) {
-      }
+      // не join — пусть завершается асинхронно
     }
 
-    // Увеличиваем поколение ТОЛЬКО когда точно стартуем
     final int myGeneration = ++playGeneration;
 
-    // Корректируем позицию
     if (currentFrame >= totalFrames)
       currentFrame = 0;
     if (endFrame > 0 && currentFrame >= endFrame)
@@ -174,6 +168,9 @@ public class AudioPlayer {
     playStartFrame = currentFrame;
     streamStartFrame = currentFrame;
     playStartTimeMs = System.currentTimeMillis();
+    hasValidTimestamp = false;
+    lastTimestampFrame = 0;
+    lastTimestampNanos = 0;
     playing = true;
 
     int framesToPlay = endFrame - playStartFrame;
@@ -234,7 +231,6 @@ public class AudioPlayer {
         if (track == t)
           track = null;
 
-        // Финалим позицию только если мы еще актуальны
         if (myGeneration == playGeneration) {
           playing = false;
           if (currentFrame < endFrame)
@@ -243,7 +239,7 @@ public class AudioPlayer {
 
         ui.post(() -> {
           if (myGeneration != playGeneration)
-            return; // старый поток молчит
+            return;
           if (listener != null) {
             listener.onStateChanged(false);
             listener.onPosition(currentFrame * 1000 / RATE);
@@ -362,7 +358,6 @@ public class AudioPlayer {
     playGeneration++;
     ui.removeCallbacks(positionTick);
 
-    // Обновляем currentFrame точным значением на момент паузы
     int elapsedMs = (int) (System.currentTimeMillis() - playStartTimeMs);
     currentFrame = Math.min(playStartFrame + (elapsedMs * RATE / 1000), endFrame);
 
@@ -383,6 +378,7 @@ public class AudioPlayer {
 
   public void release() {
     playing = false;
+    playGeneration++;
     ui.removeCallbacks(positionTick);
     this.listener = null;
     this.pcm = null;

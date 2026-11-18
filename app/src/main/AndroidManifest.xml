@@ -1,11 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.grinya.voicesampleprep">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Запись с микрофона -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-
-    <!-- Чтение внешних файлов для импорта (только до Android 12, дальше SAF) -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
@@ -24,7 +20,6 @@
             android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
