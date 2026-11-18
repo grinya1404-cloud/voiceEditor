@@ -46,9 +46,9 @@ public class BankActivity extends AppCompatActivity {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_bank);
 
-    // E11: восстановить currentBank из Intent extra
-    String bankName = getIntent().getStringExtra("bankName");
+    // E11: восстановить currentBank из Intent extra (MainActivity передаёт bankName)
     bankManager = new BankManager(this);
+    String bankName = getIntent().getStringExtra("bankName");
     if (bankName != null) {
       for (Bank b : bankManager.listBanks()) {
         if (b.name.equals(bankName)) {
